@@ -1,35 +1,42 @@
-/**
- * Shared Type Definitions for Renderer
- */
+export interface BrowserJobRow {
+  id: string;
+  job_id: string;
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'stopped';
+  events: BrowserEvent[];
+  created_at: string;
+  result_meta?: any;
+  error_message?: string;
+}
 
-export type TabState = 'in_progress' | 'success' | 'failed';
-
-export interface TabData {
-  id: number;
-  url: string;
-  title?: string;
+export interface BrowserEvent {
+  type: 'tool_call' | 'status' | 'error';
+  tool?: string;
+  message: string;
+  ts: string;
 }
 
 declare global {
   interface Window {
     Finbro: {
-      tabs: {
-        create: (url: string) => Promise<{ tabId: number }>;
-        switch: (tabId: number) => Promise<void>;
-        close: (tabId: number) => Promise<void>;
-        getCurrent: () => Promise<number>;
-        getAll: () => Promise<{ tabs: TabData[]; currentTabId: number }>;
-        navigate: (tabId: number, url: string) => Promise<void>;
-      };
       config: {
         get: () => Promise<{ config: any }>;
         set: (config: any) => Promise<void>;
       };
-      animation: {
-        getStates: () => Promise<{ states: Record<number, string> }>;
-        onStateChange: (callback: (states: Record<number, string>) => void) => () => void;
+      auth: {
+        sendAuthToken: (token: string | null) => Promise<void>;
+        onTokenChanged: (callback: (token: string | null) => void) => () => void;
+      };
+      browser: {
+        stop: (jobId: string) => Promise<void>;
+      };
+      panel: {
+        navigate: (url: string) => Promise<void>;
       };
     };
+    finbro?: {
+      sendAuthToken: (token: string | null) => void;
+    };
+    __FINBRO_ENV__?: { isElectron: boolean };
   }
 }
 

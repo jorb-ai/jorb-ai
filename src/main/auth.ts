@@ -1,34 +1,30 @@
-/**
- * Authentication Manager
- * 
- * Manages JWT tokens and WebSocket authentication state.
- * Stores tokens in memory and coordinates with WebSocket client.
- */
-
-import { connectWebSocket, disconnectWebSocket } from './websocket-client.js';
+import { BrowserWindow } from 'electron';
+import { connectWebSocket, disconnectWebSocket } from './websocket-client';
 
 let currentToken: string | null = null;
+let mainWindow: BrowserWindow | null = null;
+
+export function setMainWindowRef(window: BrowserWindow): void {
+  mainWindow = window;
+}
 
 export function handleAuthToken(token: string | null): void {
   if (token === null) {
-    // LOGOUT: Always disconnect when token is null
-    console.log('');
-    console.log('🚪 LOGOUT DETECTED 🚪');
-    console.log('[Auth] Clearing token and disconnecting WebSocket');
-    console.log('');
-    
+    console.log('[Auth] Logout — clearing token');
     currentToken = null;
     disconnectWebSocket();
-    console.log('[Auth] ✅ JWT cleared successfully');
+    notifyRenderer(null);
   } else {
-    // LOGIN/REFRESH: Try to connect (will be ignored if already connected)
-    console.log('[Auth] ✅ Received JWT token');
-    console.log('[Auth] Token (first 50 chars):', token.substring(0, 50) + '...');
-    
+    console.log('[Auth] Received JWT');
     currentToken = token;
-    console.log('[Auth] JWT stored in memory, ready for WebSocket');
-    
     connectWebSocket(token);
+    notifyRenderer(token);
+  }
+}
+
+function notifyRenderer(token: string | null): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('auth:token-changed', token);
   }
 }
 
@@ -39,4 +35,3 @@ export function getCurrentToken(): string | null {
 export function isAuthenticated(): boolean {
   return currentToken !== null;
 }
-

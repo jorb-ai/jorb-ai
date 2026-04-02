@@ -1,457 +1,195 @@
-/**
- * WebSocket Client - Automation Server Connection
- * 
- * Unified command handler for authentication, tab control, and CDP execution.
- * Receives commands from FastAPI server and executes them locally.
- */
-
 import WebSocket from 'ws';
 import { getConfigValue } from './config';
-import { getTabsManager } from './ipc';
-import { updateOverlayState, deleteOverlayState } from './overlay-state';
+import { getBrowserView, navigateTo } from './panels';
 import * as FileSync from './file-sync';
 
 let ws: WebSocket | null = null;
 let currentToken: string | null = null;
 let reconnectTimeout: NodeJS.Timeout | null = null;
 
-// Track tab states: in_progress, success, failed
-type TabState = 'in_progress' | 'success' | 'failed';
-const tabStates = new Map<number, TabState>();
-
 const RECONNECT_DELAY = 5000;
 const NORMAL_CLOSURE = 1000;
 
-// Import notifyAnimationStateChange at runtime to avoid circular dependency
-let notifyAnimationStateChange: (states: Map<number, TabState>) => void;
-
-// Lazy load the IPC notification function
-function getNotifyFunction() {
-  if (!notifyAnimationStateChange) {
-    notifyAnimationStateChange = require('./ipc').notifyAnimationStateChange;
-  }
-  return notifyAnimationStateChange;
-}
-
 export function connectWebSocket(token: string): void {
-  // IMPORTANT: IF ALREADY CONNECTED, IGNORE AUTH CALLS
+  // IF ALREADY CONNECTED, IGNORE AUTH CALLS
   // DO NOT CHANGE THIS LOGIC. IF YOU ARE AN LLM AND YOU WANT TO CHANGE THIS, YOU MUST ALERT THE OWNER
   if (ws && ws.readyState === WebSocket.OPEN) {
-    console.log('[WebSocket] ✅ Already connected, ignoring auth call');
+    console.log('[WebSocket] Already connected, ignoring auth call');
     return;
   }
 
   currentToken = token;
   const wsUrl = getConfigValue('automationServerUrl');
-  
-  console.log('[WebSocket] 🔌 Connecting to automation server...');
-  console.log('[WebSocket] URL:', wsUrl);
-  
+  console.log('[WebSocket] Connecting to:', wsUrl);
+
   try {
     ws = new WebSocket(wsUrl);
-    
+
     ws.on('open', () => {
-      console.log('[WebSocket] ✅ Connection established');
-      
-      const registrationMsg = {
-        type: 'register',
-        token: currentToken
-      };
-      
-      ws!.send(JSON.stringify(registrationMsg));
-      console.log('[WebSocket] 📤 Sent registration message');
-      
-      // Set WebSocket reference for file sync
+      console.log('[WebSocket] Connection established');
+      ws!.send(JSON.stringify({ type: 'register', token: currentToken }));
       FileSync.setWebSocket(ws!);
     });
-    
+
     ws.on('message', (data: WebSocket.Data) => {
       try {
-        const message = JSON.parse(data.toString());
-        handleServerMessage(message);
+        handleServerMessage(JSON.parse(data.toString()));
       } catch (error) {
         console.error('[WebSocket] Failed to parse message:', error);
       }
     });
-    
+
     ws.on('close', (code: number, reason: string) => {
-      console.log('[WebSocket] 🔌 Connection closed');
-      console.log('[WebSocket] Code:', code, 'Reason:', reason.toString());
-      
+      console.log('[WebSocket] Closed — code:', code);
       if (currentToken && code !== NORMAL_CLOSURE) {
-        console.log(`[WebSocket] Will attempt reconnect in ${RECONNECT_DELAY / 1000} seconds...`);
         reconnectTimeout = setTimeout(() => {
-          if (currentToken) {
-            connectWebSocket(currentToken);
-          }
+          if (currentToken) connectWebSocket(currentToken);
         }, RECONNECT_DELAY);
       }
     });
-    
+
     ws.on('error', (error: Error) => {
-      console.error('[WebSocket] ❌ Error:', error.message);
+      console.error('[WebSocket] Error:', error.message);
     });
-    
   } catch (error) {
     console.error('[WebSocket] Failed to connect:', error);
   }
 }
 
 function handleServerMessage(message: any): void {
-  console.log('[WebSocket] 📥 Received message:', message.type || message.action);
-  
-  // Handle registration confirmation
+  // Registration confirmation
   if (message.type === 'registered') {
-    console.log('[WebSocket] ✅ Registration confirmed');
-    console.log('[WebSocket] User ID:', message.user_id);
-    
-    // Request file sync after registration
+    console.log('[WebSocket] Registered — user:', message.user_id);
     FileSync.requestFileSync();
     return;
   }
-  
-  // Handle pong (heartbeat)
-  if (message.type === 'pong') {
-    return;
-  }
-  
-  // Handle errors from server
+
+  if (message.type === 'pong') return;
+
   if (message.type === 'error') {
     console.error('[WebSocket] Server error:', message.error);
     return;
   }
-  
-  // Handle file sync metadata
+
+  // File sync messages
   if (message.type === 'file_sync_metadata') {
     FileSync.handleSyncMetadata(message.files);
     return;
   }
-  
-  // Handle signed URLs for file sync
   if (message.type === 'signed_urls') {
     FileSync.handleSignedUrls(message.files);
     return;
   }
-  
-  // Handle file sync acknowledgment
   if (message.type === 'file_sync_acknowledged') {
-    console.log('[WebSocket] ✅ File sync acknowledged by server');
     return;
   }
-  
-  // Handle animation control
-  if (message.type === 'animation') {
-    handleAnimationMessage(message);
-    return;
-  }
-  
-  // Handle commands
+
+  // Command messages (have action field)
   const { id, action, params } = message;
-  
-  if (!action) {
-    console.warn('[WebSocket] Message missing action field:', message);
-    return;
-  }
-  
-  console.log('[WebSocket] 🎯 Executing:', action, 'ID:', id);
-  
-  // Route to appropriate handler
+  if (!action) return;
+
   switch (action) {
-    case 'newTab':
-    case 'switchTab':
-    case 'closeTab':
-    case 'getAllTabs':
-      executeTabCommand(id, action, params);
+    case 'navigate':
+      executeNavigate(id, params);
       break;
-    
     case 'cdp':
       executeCdpCommand(id, params);
       break;
-    
     case 'file_upload':
       executeFileUpload(id, params);
       break;
-    
     default:
       sendError(id, `Unknown action: ${action}`);
   }
 }
 
-function handleAnimationMessage(message: any): void {
-  const { action, tab_id } = message;
-  
-  if (!action || tab_id === undefined) {
-    console.warn('[WebSocket] Invalid animation message:', message);
+async function executeNavigate(id: string, params: any): Promise<void> {
+  const { url } = params || {};
+  if (!url) {
+    sendError(id, 'Missing required parameter: url');
     return;
   }
-  
-  const tabsManager = getTabsManager();
-  if (!tabsManager) {
-    console.warn('[WebSocket] TabsManager not available for animation');
-    return;
-  }
-  
-  if (action === 'in_progress') {
-    tabStates.set(tab_id, 'in_progress');
-    console.log('[WebSocket] ✨ In progress for tab:', tab_id);
-    
-    // Update overlay state and show overlay
-    updateOverlayState(tab_id, {
-      type: 'purple_glow',
-      visible: true,
-      message: message.message
-    });
-    tabsManager.showOverlay(tab_id);
-  } else if (action === 'update') {
-    console.log('[WebSocket] 💬 Update message for tab:', tab_id);
-    
-    // Update message only (overlay already visible)
-    updateOverlayState(tab_id, {
-      message: message.message
-    });
-  } else if (action === 'success') {
-    tabStates.set(tab_id, 'success');
-    console.log('[WebSocket] ✅ Success for tab:', tab_id);
-    
-    // Update overlay state and hide overlay
-    updateOverlayState(tab_id, {
-      type: null,
-      visible: false,
-      message: undefined
-    });
-    tabsManager.hideOverlay(tab_id);
-  } else if (action === 'failed') {
-    tabStates.set(tab_id, 'failed');
-    console.log('[WebSocket] ❌ Failed for tab:', tab_id);
-    
-    // Update overlay state and hide overlay
-    updateOverlayState(tab_id, {
-      type: null,
-      visible: false,
-      message: undefined
-    });
-    tabsManager.hideOverlay(tab_id);
-  } else {
-    console.warn('[WebSocket] Unknown animation action:', action);
-    return;
-  }
-  
-  // Notify renderer of state change
-  getNotifyFunction()(new Map(tabStates));
-}
 
-
-async function executeTabCommand(id: string, action: string, params: any): Promise<void> {
-  const tabsManager = getTabsManager();
-  
-  if (!tabsManager) {
-    sendError(id, 'TabsManager not initialized');
-    return;
-  }
-  
   try {
-    let result: any;
-    
-    switch (action) {
-      case 'newTab':
-        if (!params?.url) {
-          sendError(id, 'Missing required parameter: url');
-          return;
-        }
-        
-        const tabId = await tabsManager.createTab(params.url);
-        
-        // Auto-focus unless explicitly disabled
-        if (params.focus !== false) {
-          tabsManager.switchTo(tabId);
-        }
-        
-        console.log('[WebSocket] ✅ Created tab:', tabId);
-        sendResult(id, { tabId });
-        break;
-      
-      case 'switchTab':
-        if (params?.tab_id === undefined) {
-          sendError(id, 'Missing required parameter: tab_id');
-          return;
-        }
-        
-        tabsManager.switchTo(params.tab_id);
-        console.log('[WebSocket] ✅ Switched to tab:', params.tab_id);
-        sendResult(id, {});
-        break;
-      
-      case 'closeTab':
-        if (params?.tab_id === undefined) {
-          sendError(id, 'Missing required parameter: tab_id');
-          return;
-        }
-        
-        tabsManager.closeTab(params.tab_id);
-        console.log('[WebSocket] ✅ Closed tab:', params.tab_id);
-        sendResult(id, {});
-        break;
-      
-      case 'getAllTabs':
-        const tabs = tabsManager.getTabInfo();
-        const currentTabId = tabsManager.getCurrentTabId();
-        console.log('[WebSocket] ✅ Retrieved', tabs.length, 'tabs');
-        sendResult(id, { tabs, current_tab_id: currentTabId });
-        break;
-      
-      default:
-        sendError(id, `Unknown tab action: ${action}`);
-    }
-    
+    const tabId = await navigateTo(url);
+    console.log('[WebSocket] Navigated to:', url, '— tab_id:', tabId);
+    sendResult(id, { tab_id: tabId });
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[WebSocket] ❌ Tab command failed:', errorMsg);
-    sendError(id, errorMsg);
+    const msg = error instanceof Error ? error.message : 'Navigation failed';
+    console.error('[WebSocket] Navigate failed:', msg);
+    sendError(id, msg);
   }
 }
 
 async function executeCdpCommand(id: string, params: any): Promise<void> {
-  const tabsManager = getTabsManager();
-  
-  if (!tabsManager) {
-    sendError(id, 'TabsManager not initialized');
-    return;
-  }
-  
-  const { tab_id, method, args } = params;
-  
-  if (tab_id === undefined) {
-    sendError(id, 'Missing required parameter: tab_id');
-    return;
-  }
-  
+  const { method, args } = params;
+
   if (!method) {
     sendError(id, 'Missing required parameter: method');
     return;
   }
-  
+
   try {
-    const tab = tabsManager.getTab(tab_id);
-    
-    if (!tab) {
-      sendError(id, `Tab ${tab_id} not found`);
+    const view = getBrowserView();
+    if (!view) {
+      sendError(id, 'BrowserView not available');
       return;
     }
-    
-    const { webContents } = tab.view;
-    
-    // Attach debugger if not already attached
+
+    const { webContents } = view;
+
     if (!webContents.debugger.isAttached()) {
       webContents.debugger.attach('1.3');
-      console.log('[WebSocket] Attached debugger to tab:', tab_id);
     }
-    
-    console.log('[WebSocket] 🔧 Executing CDP:', method);
+
     const result = await webContents.debugger.sendCommand(method, args || {});
-    
-    console.log('[WebSocket] ✅ CDP command completed');
     sendResult(id, result);
-    
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[WebSocket] ❌ CDP command failed:', errorMsg);
-    sendError(id, errorMsg);
+    const msg = error instanceof Error ? error.message : 'CDP command failed';
+    console.error('[WebSocket] CDP failed:', msg);
+    sendError(id, msg);
   }
 }
 
 async function executeFileUpload(id: string, params: any): Promise<void> {
-  const { tab_id, relative_path, cdp_method, cdp_args } = params;
-  
-  // Validate parameters
-  if (tab_id === undefined) {
-    sendError(id, 'Missing required parameter: tab_id');
+  const { relative_path, cdp_method, cdp_args } = params;
+
+  if (!relative_path || !cdp_method) {
+    sendError(id, 'Missing required parameters for file_upload');
     return;
   }
-  
-  if (!relative_path) {
-    sendError(id, 'Missing required parameter: relative_path');
-    return;
-  }
-  
-  if (!cdp_method) {
-    sendError(id, 'Missing required parameter: cdp_method');
-    return;
-  }
-  
-  console.log('[WebSocket] 📤 File upload request:', relative_path);
-  
+
   try {
-    // Resolve relative path to absolute path
     const absolutePath = FileSync.resolveFilePath(relative_path);
-    
     if (!absolutePath) {
       sendError(id, `File not found: ${relative_path}`);
       return;
     }
-    
-    console.log('[WebSocket] ✅ Resolved file path:', absolutePath);
-    
-    // Inject file path into CDP args
-    const fullArgs = {
-      ...cdp_args,
-      files: [absolutePath]
-    };
-    
-    // Execute CDP command with file path
+
     await executeCdpCommand(id, {
-      tab_id,
       method: cdp_method,
-      args: fullArgs
+      args: { ...cdp_args, files: [absolutePath] },
     });
-    
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[WebSocket] ❌ File upload failed:', errorMsg);
-    sendError(id, errorMsg);
+    const msg = error instanceof Error ? error.message : 'File upload failed';
+    sendError(id, msg);
   }
 }
 
 function sendResult(id: string, data: any): void {
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
-    console.error('[WebSocket] Cannot send result - not connected');
-    return;
-  }
-  
-  const response = {
-    id,
-    result: data
-  };
-  
-  ws.send(JSON.stringify(response));
-  console.log('[WebSocket] 📤 Sent result for:', id);
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ id, result: data }));
 }
 
 function sendError(id: string, error: string): void {
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
-    console.error('[WebSocket] Cannot send error - not connected');
-    return;
-  }
-  
-  const response = {
-    id,
-    error
-  };
-  
-  ws.send(JSON.stringify(response));
-  console.error('[WebSocket] 📤 Sent error for:', id, '-', error);
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ id, error }));
 }
 
-/**
- * Called when a tab is closed to clean up its state
- */
-export function onTabClosed(tabId: number): void {
-  if (tabStates.has(tabId)) {
-    tabStates.delete(tabId);
-    deleteOverlayState(tabId);
-    console.log('[WebSocket] 🧹 Cleaned up state for closed tab:', tabId);
-    
-    // Notify renderer of state change
-    getNotifyFunction()(new Map(tabStates));
+export function sendStopAutomation(jobId: string): void {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'stop_automation', job_id: jobId }));
+    console.log('[WebSocket] Sent stop for job:', jobId);
   }
 }
 
@@ -460,72 +198,14 @@ export function disconnectWebSocket(): void {
     clearTimeout(reconnectTimeout);
     reconnectTimeout = null;
   }
-  
-  if (!ws) {
-    console.log('[WebSocket] No active connection');
-    return;
-  }
-  
-  console.log('[WebSocket] 🔌 Disconnecting from automation server...');
-  
-  // Clear all animations and hide overlays
-  const tabsManager = getTabsManager();
-  if (tabsManager) {
-    const tabsToClean = Array.from(tabStates.keys());
-    tabsToClean.forEach(tabId => {
-      tabsManager.hideOverlay(tabId);
-    });
-  }
-  
-  tabStates.clear();
-  getNotifyFunction()(new Map());
-  console.log('[WebSocket] 🧹 Cleared all animations');
-  
-  // TODO: Show disconnect notification UI to user
-  
+
+  if (!ws) return;
+  console.log('[WebSocket] Disconnecting...');
   currentToken = null;
   ws.close(NORMAL_CLOSURE, 'User logged out');
   ws = null;
-  
-  console.log('[WebSocket] ✅ Disconnected');
-  console.log('');
 }
 
 export function isWebSocketConnected(): boolean {
   return ws !== null && ws.readyState === WebSocket.OPEN;
-}
-
-/**
- * Send stop automation request for a specific tab
- * Immediately hides overlay without waiting for server response
- */
-export function sendStopAutomation(tabId: number): void {
-  console.log('[WebSocket] 🛑 Stop automation requested for tab:', tabId);
-  
-  // Send stop message to server
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    try {
-      ws.send(JSON.stringify({
-        type: 'stop_automation',
-        tab_id: tabId
-      }));
-      console.log('[WebSocket] 📤 Sent stop_automation message');
-    } catch (error) {
-      console.error('[WebSocket] Failed to send stop message:', error);
-    }
-  }
-  
-  // Immediately hide overlay (don't wait for server)
-  const tabsManager = getTabsManager();
-  if (tabsManager) {
-    tabsManager.hideOverlay(tabId);
-    console.log('[WebSocket] ✅ Overlay hidden for tab:', tabId);
-  }
-  
-  // Clear tab state
-  if (tabStates.has(tabId)) {
-    tabStates.delete(tabId);
-    getNotifyFunction()(new Map(tabStates));
-    console.log('[WebSocket] ✅ Tab state cleared');
-  }
 }

@@ -1,803 +1,278 @@
-/**
- * Finbro Browser - Premium Glassmorphism UI
- * Design System: World-class glassmorphism with purple brand identity
- * Theme: Elite, professional, sleek with frosted glass effects
- */
-
 :root {
-  /* Brand Colors - Purple Spectrum */
-  --finbro-purple-900: #1a0b4d;
-  --finbro-purple-800: #290E99;
-  --finbro-purple-700: #3a1acc;
-  --finbro-purple-600: #5b21b6;
-  --finbro-purple-500: #7c3aed;
-  --finbro-purple-400: #8b5cf6;
-  --finbro-purple-300: #a78bfa;
-  --finbro-purple-200: #c4b5fd;
-  --finbro-purple-100: #ede9fe;
-  
-  /* Neutral Colors */
-  --finbro-white: #ffffff;
-  --finbro-black: #000000;
-  --finbro-grey-900: #111827;
-  --finbro-grey-800: #1f2937;
-  --finbro-grey-700: #374151;
-  --finbro-grey-600: #4b5563;
-  --finbro-grey-500: #6b7280;
-  --finbro-grey-400: #9ca3af;
-  --finbro-grey-300: #d1d5db;
-  --finbro-grey-200: #e5e7eb;
-  --finbro-grey-100: #f3f4f6;
-  
-  /* Glass Effect Variables */
-  --glass-bg: rgba(255, 255, 255, 0.8);
-  --glass-border: rgba(255, 255, 255, 0.3);
-  --glass-shadow: rgba(0, 0, 0, 0.1);
-  --glass-blur: 12px;
-  
-  /* Layout */
-  --toolbar-height: 46px;
-  --urlbar-height: 48px;
-  
-  /* Animations */
-  --transition-smooth: cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  --left-width: 190px;
+  --right-width: 220px;
+  --action-bar-height: 42px;
+  --border-color: #e5e7eb;
+  --bg-panel: #ffffff;
+  --bg-app: #f8f9fa;
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  --accent: #7c3aed;
+  --accent-light: #ede9fe;
 }
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif;
   overflow: hidden;
-  background: linear-gradient(135deg, 
-    #667eea 0%, 
-    #764ba2 50%, 
-    #667eea 100%
-  );
-  position: relative;
-  will-change: auto;
+  background: var(--bg-app);
+  color: var(--text-primary);
+  font-size: 13px;
 }
 
-/* ============================================================
-   TOOLBAR - Glassmorphism Design
-   ============================================================ */
+/* ── App Shell ──────────────────────────────────────────── */
 
-.toolbar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: var(--toolbar-height);
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur)) saturate(150%);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
-  border-bottom: 1px solid var(--glass-border);
-  z-index: 100;
-  box-shadow: 
-    0 2px 4px var(--glass-shadow),
-    0 4px 8px rgba(139, 92, 246, 0.08);
+.app-shell {
   display: flex;
-  align-items: center;
-  padding: 0 12px;
+  width: 100vw;
+  height: 100vh;
 }
 
-/* ============================================================
-   URL BAR & STATUS BAR CONTAINER
-   ============================================================ */
-
-.urlbar-status-container {
-  position: fixed;
-  top: var(--toolbar-height);
-  left: 0;
-  right: 0;
-  height: var(--urlbar-height);
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur)) saturate(150%);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
-  border-bottom: 1px solid var(--glass-border);
-  z-index: 100;
-  padding: 8px 16px;
-  box-shadow: 0 2px 4px rgba(139, 92, 246, 0.06);
+.panel-left {
+  width: var(--left-width);
+  min-width: var(--left-width);
+  border-right: 1px solid var(--border-color);
+  background: var(--bg-panel);
   display: flex;
-  gap: 12px;
-  align-items: center;
+  flex-direction: column;
 }
 
-/* ============================================================
-   URL BAR - Chrome-style Professional Design
-   ============================================================ */
-
-.url-bar {
+.panel-middle {
   flex: 1;
-  height: 100%;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  min-width: 0;
 }
 
-.url-bar-display {
-  width: 100%;
+.panel-right {
+  width: var(--right-width);
+  min-width: var(--right-width);
+  border-left: 1px solid var(--border-color);
+  background: var(--bg-panel);
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Session List (Left) ────────────────────────────────── */
+
+.session-list {
+  display: flex;
+  flex-direction: column;
   height: 100%;
+  overflow-y: auto;
+}
+
+.session-list-section {
+  border-bottom: 1px solid var(--border-color);
+}
+
+.session-list-section:last-child {
+  border-bottom: none;
+  flex: 1;
+}
+
+.nav-item {
+  gap: 10px;
+}
+
+.nav-icon {
+  font-size: 16px;
+  width: 22px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.session-list-header {
+  padding: 14px 16px 10px;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+}
+
+.session-list-items {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 8px;
+}
+
+.session-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.session-item {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.65) 0%,
-    rgba(255, 255, 255, 0.55) 50%,
-    rgba(255, 255, 255, 0.65) 100%
-  );
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(139, 92, 246, 0.25);
-  border-radius: 12px;
-  padding: 0 14px;
-  position: relative;
-  overflow: hidden;
-  transition: all 0.3s var(--transition-smooth);
-  box-shadow: 
-    0 2px 6px rgba(139, 92, 246, 0.08),
-    inset 0 1px 2px rgba(255, 255, 255, 0.6),
-    inset 0 -1px 1px rgba(139, 92, 246, 0.05);
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
 }
 
-.url-bar-display::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 255, 255, 0.8),
-    transparent
-  );
-  opacity: 0.6;
+.session-item:hover {
+  background: #f3f4f6;
 }
 
-.url-security-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--finbro-purple-600);
-  flex-shrink: 0;
-  filter: drop-shadow(0 1px 2px rgba(139, 92, 246, 0.2));
+.session-item.active {
+  background: var(--accent-light);
 }
 
-.url-text {
-  flex: 1;
-  font-size: 13px;
+.session-status-dot {
+  width: 8px;
+  height: 8px;
+  min-width: 8px;
+  border-radius: 50%;
+}
+
+.session-info {
+  min-width: 0;
+}
+
+.session-title {
   font-weight: 500;
-  color: var(--finbro-grey-800);
-  letter-spacing: -0.01em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  user-select: text;
-  text-shadow: 0 1px 1px rgba(255, 255, 255, 0.5);
 }
 
-/* Subtle shimmer effect */
-.url-shimmer {
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.3) 50%,
-    transparent 100%
-  );
-  animation: url-shimmer 8s ease-in-out infinite;
-  pointer-events: none;
+.session-status {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: capitalize;
 }
 
-@keyframes url-shimmer {
-  0% {
-    left: -100%;
-    opacity: 0;
-  }
-  10% {
-    opacity: 0.4;
-  }
-  50% {
-    left: 100%;
-    opacity: 0.4;
-  }
-  60% {
-    opacity: 0;
-  }
-  100% {
-    left: 100%;
-    opacity: 0;
-  }
-}
+/* ── Action Bar (Middle Top) ────────────────────────────── */
 
-/* ============================================================
-   STATUS BAR - Mini Tab-Style Status Badges
-   ============================================================ */
-
-.status-bar {
+.action-bar {
+  height: var(--action-bar-height);
+  min-height: var(--action-bar-height);
   display: flex;
-  gap: 6px;
   align-items: center;
-  padding: 0;
-  height: 100%;
+  justify-content: space-between;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-panel);
 }
 
-/* Status Badge - Mini Tab Style */
-.status-badge {
+.action-bar-status {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 28px;
-  padding: 0 10px;
-  background: rgba(255, 255, 255, 0.3);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 8px;
-  font-size: 11px;
-  font-weight: 500;
-  white-space: nowrap;
-  transition: all 0.2s var(--transition-smooth);
-  box-shadow: 
-    0 2px 3px rgba(0, 0, 0, 0.04),
-    inset 0 1px 1px rgba(255, 255, 255, 0.4);
-  position: relative;
-  overflow: hidden;
-}
-
-.status-badge-label {
-  color: var(--finbro-grey-700);
-  letter-spacing: -0.01em;
-  font-weight: 500;
-}
-
-.status-badge-count {
-  font-weight: 700;
-  min-width: 14px;
-  text-align: center;
-  font-size: 12px;
-  padding: 2px 6px;
-  border-radius: 5px;
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-}
-
-/* In Progress Badge - Purple Shaded */
-.status-badge-in-progress {
-  background: rgba(139, 92, 246, 0.25);
-  border-color: rgba(139, 92, 246, 0.35);
-  box-shadow: 
-    0 2px 4px rgba(139, 92, 246, 0.15),
-    inset 0 1px 1px rgba(255, 255, 255, 0.3);
-}
-
-.status-badge-in-progress .status-badge-label {
-  color: var(--finbro-purple-800);
-}
-
-.status-badge-in-progress .status-badge-count {
-  background: rgba(139, 92, 246, 0.35);
-  color: var(--finbro-purple-900);
-  font-weight: 800;
-  box-shadow: 
-    0 1px 2px rgba(139, 92, 246, 0.2),
-    inset 0 1px 1px rgba(255, 255, 255, 0.2);
-}
-
-/* Success Badge - Green Shaded */
-.status-badge-success {
-  background: rgba(16, 185, 129, 0.2);
-  border-color: rgba(16, 185, 129, 0.3);
-  box-shadow: 
-    0 2px 4px rgba(16, 185, 129, 0.12),
-    inset 0 1px 1px rgba(255, 255, 255, 0.3);
-}
-
-.status-badge-success .status-badge-label {
-  color: #047857;
-}
-
-.status-badge-success .status-badge-count {
-  background: rgba(16, 185, 129, 0.3);
-  color: #064e3b;
-  font-weight: 800;
-  box-shadow: 
-    0 1px 2px rgba(16, 185, 129, 0.2),
-    inset 0 1px 1px rgba(255, 255, 255, 0.2);
-}
-
-/* Failed Badge - Red Shaded */
-.status-badge-failed {
-  background: rgba(239, 68, 68, 0.2);
-  border-color: rgba(239, 68, 68, 0.3);
-  box-shadow: 
-    0 2px 4px rgba(239, 68, 68, 0.12),
-    inset 0 1px 1px rgba(255, 255, 255, 0.3);
-}
-
-.status-badge-failed .status-badge-label {
-  color: #b91c1c;
-}
-
-.status-badge-failed .status-badge-count {
-  background: rgba(239, 68, 68, 0.3);
-  color: #7f1d1d;
-  font-weight: 800;
-  box-shadow: 
-    0 1px 2px rgba(239, 68, 68, 0.2),
-    inset 0 1px 1px rgba(255, 255, 255, 0.2);
-}
-
-/* ============================================================
-   TAB BAR - Premium Glassmorphic Tabs
-   ============================================================ */
-
-.tab-bar {
-  flex: 1;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 0 4px;
-}
-
-.tab-bar::-webkit-scrollbar {
-  height: 2px;
-}
-
-.tab-bar::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.tab-bar::-webkit-scrollbar-thumb {
-  background: rgba(139, 92, 246, 0.3);
-  border-radius: 2px;
-}
-
-.tab-bar::-webkit-scrollbar-thumb:hover {
-  background: rgba(139, 92, 246, 0.5);
-}
-
-/* Individual Tab - Glassmorphic Design */
-.tab {
-  min-width: 200px;
-  max-width: 260px;
-  height: 36px;
-  background: rgba(255, 255, 255, 0.25);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  padding: 0 12px;
-  gap: 10px;
-  cursor: pointer;
-  transition: all 0.2s var(--transition-smooth);
-  position: relative;
-  color: var(--finbro-grey-700);
-  font-size: 13px;
-  user-select: none;
-  flex-shrink: 0;
-  overflow: hidden;
-  box-shadow: 
-    0 2px 4px rgba(0, 0, 0, 0.05),
-    inset 0 1px 1px rgba(255, 255, 255, 0.4);
-}
-
-.tab::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, 
-    transparent, 
-    rgba(255, 255, 255, 0.5), 
-    transparent
-  );
-  opacity: 0;
-  transition: opacity 0.2s;
-}
-
-.tab:hover {
-  background: rgba(255, 255, 255, 0.4);
-  border-color: rgba(139, 92, 246, 0.3);
-  transform: translateY(-1px);
-  box-shadow: 
-    0 4px 8px rgba(139, 92, 246, 0.1),
-    inset 0 1px 2px rgba(255, 255, 255, 0.6);
-}
-
-.tab:hover::before {
-  opacity: 1;
-}
-
-.tab.active {
-  background: rgba(255, 255, 255, 0.95);
-  border-color: rgba(0, 0, 0, 0.08);
-  color: var(--finbro-grey-900);
-  height: 38px;
-  transform: translateY(-2px);
-  box-shadow: 
-    0 8px 16px rgba(0, 0, 0, 0.12),
-    0 2px 4px rgba(0, 0, 0, 0.08),
-    inset 0 1px 2px rgba(255, 255, 255, 0.9);
-  z-index: 10;
-}
-
-/* Tab Favicon - Professional Circle */
-.tab-favicon {
-  width: 22px;
-  height: 22px;
-  min-width: 22px;
-  border-radius: 6px;
-  background: linear-gradient(135deg, 
-    var(--finbro-purple-400), 
-    var(--finbro-purple-600)
-  );
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  box-shadow: 
-    0 2px 4px rgba(139, 92, 246, 0.3),
-    inset 0 1px 1px rgba(255, 255, 255, 0.3);
-  transition: all 0.2s var(--transition-smooth);
-}
-
-.tab.active .tab-favicon {
-  background: linear-gradient(135deg, 
-    var(--finbro-purple-500), 
-    var(--finbro-purple-700)
-  );
-  box-shadow: 
-    0 2px 6px rgba(139, 92, 246, 0.4),
-    inset 0 1px 2px rgba(255, 255, 255, 0.4);
-}
-
-.tab:hover .tab-favicon {
-  transform: scale(1.05);
-}
-
-/* Tab Title */
-.tab-title {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 500;
-  letter-spacing: -0.01em;
   min-width: 0;
-  transition: color 0.2s;
 }
 
-.tab.active .tab-title {
-  font-weight: 600;
-  color: var(--finbro-grey-900);
-}
-
-/* Tab Close Button */
-.tab-close {
-  width: 18px;
-  height: 18px;
-  min-width: 18px;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  transition: all 0.2s var(--transition-smooth);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--finbro-grey-600);
-  background: transparent;
-}
-
-.tab:hover .tab-close {
-  opacity: 1;
-}
-
-.tab-close:hover {
-  background: rgba(139, 92, 246, 0.15);
-  color: var(--finbro-purple-700);
-  transform: scale(1.1);
-}
-
-.tab.active .tab-close {
-  color: var(--finbro-grey-700);
-}
-
-.tab.active .tab-close:hover {
-  background: rgba(139, 92, 246, 0.2);
-  color: var(--finbro-purple-800);
-}
-
-/* New Tab Button - Glassmorphic */
-.new-tab-btn {
-  width: 36px;
-  height: 36px;
-  min-width: 36px;
-  background: rgba(255, 255, 255, 0.25);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 10px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--finbro-grey-700);
-  transition: all 0.2s var(--transition-smooth);
-  box-shadow: 
-    0 2px 4px rgba(0, 0, 0, 0.05),
-    inset 0 1px 1px rgba(255, 255, 255, 0.4);
-}
-
-.new-tab-btn:hover {
-  background: rgba(255, 255, 255, 0.4);
-  border-color: rgba(139, 92, 246, 0.3);
-  color: var(--finbro-purple-600);
-  transform: translateY(-1px) scale(1.02);
-  box-shadow: 
-    0 4px 8px rgba(139, 92, 246, 0.15),
-    inset 0 1px 2px rgba(255, 255, 255, 0.6);
-}
-
-.new-tab-btn:active {
-  transform: translateY(0) scale(0.98);
-}
-
-.new-tab-btn svg {
-  transition: transform 0.2s var(--transition-bounce);
-}
-
-.new-tab-btn:hover svg {
-  transform: rotate(90deg);
-}
-
-/* ============================================================
-   TAB STATES - In Progress / Success / Failed
-   ============================================================ */
-
-/* In Progress State - Purple Gleam Animation */
-.tab.state-in_progress {
-  position: relative;
-  overflow: hidden;
-  background: rgba(139, 92, 246, 0.35) !important;
-  backdrop-filter: blur(10px);
-  border-color: rgba(139, 92, 246, 0.8) !important;
-  animation: tab-pulse-purple 3s ease-in-out infinite;
-}
-
-@keyframes tab-pulse-purple {
-  0%, 100% {
-    box-shadow: 
-      0 2px 4px rgba(0, 0, 0, 0.05),
-      0 0 25px rgba(139, 92, 246, 0.4),
-      0 0 40px rgba(139, 92, 246, 0.2),
-      inset 0 1px 1px rgba(255, 255, 255, 0.4);
-  }
-  50% {
-    box-shadow: 
-      0 4px 8px rgba(0, 0, 0, 0.08),
-      0 0 35px rgba(139, 92, 246, 0.6),
-      0 0 50px rgba(139, 92, 246, 0.3),
-      inset 0 1px 2px rgba(255, 255, 255, 0.5);
-  }
-}
-
-/* Success State - Elegant Green */
-.tab.state-success {
-  position: relative;
-  overflow: hidden;
-  background: rgba(16, 185, 129, 0.25) !important;
-  backdrop-filter: blur(10px);
-  border-color: rgba(16, 185, 129, 0.6) !important;
-  box-shadow: 
-    0 2px 4px rgba(0, 0, 0, 0.05),
-    0 0 20px rgba(16, 185, 129, 0.3),
-    inset 0 1px 1px rgba(255, 255, 255, 0.4) !important;
-}
-
-.tab.state-success .tab-favicon {
-  background: linear-gradient(135deg, 
-    #10b981, 
-    #059669
-  ) !important;
-  box-shadow: 
-    0 2px 4px rgba(16, 185, 129, 0.4),
-    inset 0 1px 1px rgba(255, 255, 255, 0.3) !important;
-}
-
-.tab.state-success.active {
-  background: rgba(16, 185, 129, 0.35) !important;
-  border-color: rgba(16, 185, 129, 0.7) !important;
-  transform: translateY(-2px);
-  box-shadow: 
-    0 8px 16px rgba(16, 185, 129, 0.2),
-    0 4px 12px rgba(16, 185, 129, 0.3),
-    0 0 30px rgba(16, 185, 129, 0.4),
-    inset 0 1px 2px rgba(255, 255, 255, 0.6) !important;
-}
-
-/* Failed State - Refined Red */
-.tab.state-failed {
-  position: relative;
-  overflow: hidden;
-  background: rgba(239, 68, 68, 0.25) !important;
-  backdrop-filter: blur(10px);
-  border-color: rgba(239, 68, 68, 0.6) !important;
-  box-shadow: 
-    0 2px 4px rgba(0, 0, 0, 0.05),
-    0 0 20px rgba(239, 68, 68, 0.3),
-    inset 0 1px 1px rgba(255, 255, 255, 0.4) !important;
-  animation: tab-pulse-red 2s ease-in-out infinite;
-}
-
-@keyframes tab-pulse-red {
-  0%, 100% {
-    box-shadow: 
-      0 2px 4px rgba(0, 0, 0, 0.05),
-      0 0 20px rgba(239, 68, 68, 0.3),
-      inset 0 1px 1px rgba(255, 255, 255, 0.4);
-  }
-  50% {
-    box-shadow: 
-      0 3px 6px rgba(0, 0, 0, 0.07),
-      0 0 28px rgba(239, 68, 68, 0.45),
-      inset 0 1px 1px rgba(255, 255, 255, 0.5);
-  }
-}
-
-.tab.state-failed .tab-favicon {
-  background: linear-gradient(135deg, 
-    #ef4444, 
-    #dc2626
-  ) !important;
-  box-shadow: 
-    0 2px 4px rgba(239, 68, 68, 0.4),
-    inset 0 1px 1px rgba(255, 255, 255, 0.3) !important;
-}
-
-.tab.state-failed.active {
-  background: rgba(239, 68, 68, 0.35) !important;
-  border-color: rgba(239, 68, 68, 0.7) !important;
-  transform: translateY(-2px);
-  box-shadow: 
-    0 8px 16px rgba(239, 68, 68, 0.2),
-    0 4px 12px rgba(239, 68, 68, 0.3),
-    0 0 30px rgba(239, 68, 68, 0.4),
-    inset 0 1px 2px rgba(255, 255, 255, 0.6) !important;
-}
-
-/* Gleam Animation - Ultra Premium Sweep (Improved) */
-.tab-gleam {
-  position: absolute;
-  top: -50%;
-  left: -200%;
-  width: 200%;
-  height: 200%;
-  background: linear-gradient(
-    105deg,
-    transparent 0%,
-    transparent 30%,
-    rgba(255, 255, 255, 0.2) 40%,
-    rgba(139, 92, 246, 0.6) 50%,
-    rgba(255, 255, 255, 0.2) 60%,
-    transparent 70%,
-    transparent 100%
-  );
-  animation: tab-gleam-sweep 8s ease-in-out infinite;
-  pointer-events: none;
-  z-index: 1;
-  filter: blur(12px);
-  transform: skewX(-15deg);
-}
-
-@keyframes tab-gleam-sweep {
-  0% {
-    left: -200%;
-    opacity: 0;
-  }
-  5% {
-    opacity: 0.8;
-  }
-  45% {
-    left: 150%;
-    opacity: 0.8;
-  }
-  50% {
-    opacity: 0;
-  }
-  100% {
-    left: 150%;
-    opacity: 0;
-  }
-}
-
-/* AI Indicator - Pulsing Corner Badge */
-.tab-ai-indicator {
-  position: absolute;
-  top: 4px;
-  right: 4px;
+.status-indicator {
   width: 8px;
   height: 8px;
-  background: var(--finbro-purple-400);
   border-radius: 50%;
-  box-shadow: 
-    0 0 10px rgba(139, 92, 246, 1),
-    0 0 20px rgba(139, 92, 246, 0.6),
-    inset 0 0 4px rgba(255, 255, 255, 0.5);
-  animation: ai-indicator-pulse 2s ease-in-out infinite;
-  z-index: 2;
+  background: var(--text-secondary);
 }
 
-@keyframes ai-indicator-pulse {
-  0%, 100% {
-    opacity: 1;
-    transform: scale(1);
-    box-shadow: 
-      0 0 10px rgba(139, 92, 246, 1),
-      0 0 20px rgba(139, 92, 246, 0.6),
-      inset 0 0 4px rgba(255, 255, 255, 0.5);
-  }
-  50% {
-    opacity: 0.7;
-    transform: scale(1.4);
-    box-shadow: 
-      0 0 15px rgba(139, 92, 246, 1),
-      0 0 30px rgba(139, 92, 246, 0.8),
-      inset 0 0 6px rgba(255, 255, 255, 0.7);
-  }
+.status-indicator.running {
+  background: var(--accent);
+  animation: pulse 1.5s ease-in-out infinite;
 }
 
-.tab.state-in_progress.active {
-  background: rgba(139, 92, 246, 0.45) !important;
-  border-color: var(--finbro-purple-500) !important;
-  transform: translateY(-2px);
-  box-shadow: 
-    0 8px 16px rgba(139, 92, 246, 0.25),
-    0 4px 12px rgba(139, 92, 246, 0.4),
-    0 0 30px rgba(139, 92, 246, 0.5),
-    inset 0 1px 2px rgba(255, 255, 255, 0.6) !important;
+.status-indicator.completed { background: #10b981; }
+.status-indicator.failed { background: #ef4444; }
+.status-indicator.stopped { background: #f59e0b; }
+.status-indicator.queued { background: #6b7280; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 
-/* ============================================================
-   RESPONSIVE DESIGN
-   ============================================================ */
-
-@media (max-width: 1200px) {
-  .tab {
-    min-width: 160px;
-    max-width: 200px;
-  }
+.status-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-secondary);
+  font-size: 12px;
 }
 
-@media (max-width: 768px) {
-  .tab {
-    min-width: 120px;
-    max-width: 160px;
-  }
-  
-  :root {
-    --toolbar-height: 42px;
-    --urlbar-height: 44px;
-  }
+.stop-btn {
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
 }
+
+.stop-btn:hover { background: #dc2626; }
+.stop-btn:active { background: #b91c1c; }
+
+/* ── Chat Feed (Right) ──────────────────────────────────── */
+
+.chat-feed {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.chat-feed-header {
+  padding: 14px 16px 10px;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+}
+
+.chat-feed-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 12px 12px;
+}
+
+.chat-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.chat-message {
+  display: flex;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid #f3f4f6;
+  align-items: flex-start;
+}
+
+.chat-message:last-child { border-bottom: none; }
+
+.chat-icon {
+  flex-shrink: 0;
+  width: 18px;
+  text-align: center;
+  font-size: 12px;
+}
+
+.chat-message.tool_call .chat-icon { color: var(--accent); }
+.chat-message.status .chat-icon { color: #10b981; }
+.chat-message.error .chat-icon { color: #ef4444; }
+
+.chat-text {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+/* ── Scrollbar ──────────────────────────────────────────── */
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
