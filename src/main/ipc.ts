@@ -4,6 +4,7 @@ import { getConfig, setConfig } from './config';
 import { handleAuthToken } from './auth';
 import { sendStopAutomation } from './websocket-client';
 import { navigateTo, getCurrentUrl } from './panels';
+import { setRightPanelWidth } from './windows';
 
 export function registerIpcHandlers(): void {
   console.log('[IPC] Registering handlers...');
@@ -32,6 +33,10 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IpcChannel.BROWSER_STOP, async (_event: IpcMainInvokeEvent, args: { jobId: string }) => {
     console.log('[IPC] Stop automation — job:', args.jobId);
     sendStopAutomation(args.jobId);
+  });
+
+  ipcMain.handle(IpcChannel.PANEL_RESIZE, async (_event: IpcMainInvokeEvent, args: { width: number }) => {
+    setRightPanelWidth(args.width);
   });
 
   console.log('[IPC] All handlers registered');

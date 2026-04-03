@@ -1,18 +1,15 @@
-# Desktop Browser for finbro.me
+# Jorb AI — Desktop App
 
-**The AI-native browser powering [finbro.me](https://finbro.me)** ⚡
+The desktop application for [jorb.ai](https://jorb.ai). Automates job applications using an AI agent that fills forms via Chrome DevTools Protocol.
 
-Automatically apply to jobs for you. Built with Electron + Chrome DevTools Protocol.
+## How It Works
 
----
+The app is a three-panel Electron shell:
+- **Left** — Active agent sessions
+- **Middle** — BrowserView showing the job portal (CDP-attached)
+- **Right** — Real-time activity feed
 
-## What is this?
-
-This is the open-source browser that powers finbro.me's automated job application system. It's designed to be controlled remotely by AI agents to fill in job application forms for you.
-
-## Get Started
-
-Visit [finbro.me](https://finbro.me/browser) to download the Desktop App.
+An AI agent on the API reads the page, decides what to fill, and sends CDP commands back to the app. The user watches in real time and can stop the agent at any step.
 
 ## Development
 
@@ -21,16 +18,8 @@ npm install
 npm run dev
 ```
 
-## Contributing
-
-We welcome PRs for improvements! Feel free to open a pull request.
-
-For enquiries, email ruikai@finbro.me
-
 ## License
 
-MIT - Feel free to use this however you want! See [LICENSE](LICENSE) for details.
+MIT — See [LICENSE](LICENSE) for details.
 
----
-
-**Built by [FINBRO.ME PRIVATE LIMITED](https://finbro.me)** | Made with 💜 for job seekers
+Built by [Jorb AI](https://jorb.ai)

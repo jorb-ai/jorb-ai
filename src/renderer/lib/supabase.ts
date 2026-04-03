@@ -95,7 +95,7 @@ export function subscribeJobEvents(
     .subscribe();
 }
 
-// Initial fetch
+// Initial fetch — enrich with job title/company from jobs table
 export async function fetchUserJobs(userId: string): Promise<any[]> {
   if (!supabase || !currentToken) return [];
 
@@ -110,7 +110,40 @@ export async function fetchUserJobs(userId: string): Promise<any[]> {
     console.error('[Supabase] fetchUserJobs error:', error.message);
     return [];
   }
-  return data || [];
+
+  if (!data || data.length === 0) return [];
+
+  // Batch-enrich with job metadata
+  const jobIds = [...new Set(data.map((j: any) => j.job_id))];
+  const { data: jobs } = await supabase
+    .from('jobs')
+    .select('id, role, company')
+    .in('id', jobIds);
+
+  const jobMap = new Map((jobs || []).map((j: any) => [j.id, j]));
+
+  return data.map((row: any) => {
+    const job = jobMap.get(row.job_id);
+    return { ...row, title: job?.role || null, company: job?.company || null };
+  });
+}
+
+// Enrich a single browser_jobs row with job metadata
+export async function enrichBrowserJob(row: any): Promise<any> {
+  if (!supabase) return row;
+
+  const { data, error } = await supabase
+    .from('jobs')
+    .select('role, company')
+    .eq('id', row.job_id)
+    .single();
+
+  if (error) {
+    console.error('[Supabase] enrichBrowserJob failed:', error.message);
+    return { ...row, title: null, company: null };
+  }
+
+  return { ...row, title: data?.role || null, company: data?.company || null };
 }
 
 // Look up a job's portal URL from the jobs table

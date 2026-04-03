@@ -1,9 +1,9 @@
 {
-  "name": "finbro-browser",
-  "version": "0.0.1",
-  "description": "AI-native browser for finbro.me",
+  "name": "jorb-ai-desktop",
+  "version": "0.1.0",
+  "description": "Jorb AI desktop app — automated job applications via CDP",
   "main": "dist/main/main.js",
-  "author": "Finbro",
+  "author": "Jorb AI",
   "license": "MIT",
   "scripts": {
     "build": "tsc --project tsconfig.main.json && vite build",
@@ -31,8 +31,8 @@
     "vite": "^7.2.2"
   },
   "build": {
-    "appId": "com.finbro.browser",
-    "productName": "finbro.me",
+    "appId": "ai.jorb.desktop",
+    "productName": "Jorb AI",
     "files": [
       "dist/**/*",
       "build/**/*"

@@ -6,9 +6,9 @@ import { setMainWindowRef } from './auth';
 
 let mainWindow: BrowserWindow | null = null;
 
-const LEFT_PANEL_WIDTH = 190;
-const RIGHT_PANEL_WIDTH = 220;
-const ACTION_BAR_HEIGHT = 42;
+const LEFT_PANEL_WIDTH = 180;
+const ACTION_BAR_HEIGHT = 34;
+let rightPanelWidth = 260;
 
 export async function createMainWindow(): Promise<BrowserWindow> {
   console.log('[Windows] Creating main window...');
@@ -28,7 +28,7 @@ export async function createMainWindow(): Promise<BrowserWindow> {
       sandbox: true,
     },
     title: 'jorb.ai',
-    backgroundColor: '#f8f9fa',
+    backgroundColor: '#ffffff',
     show: false,
   });
 
@@ -68,12 +68,21 @@ export async function createMainWindow(): Promise<BrowserWindow> {
 }
 
 function computeBrowserViewBounds(windowWidth: number, windowHeight: number) {
+  // +4 accounts for the resize handle width
   return {
     x: LEFT_PANEL_WIDTH,
     y: ACTION_BAR_HEIGHT,
-    width: windowWidth - LEFT_PANEL_WIDTH - RIGHT_PANEL_WIDTH,
+    width: windowWidth - LEFT_PANEL_WIDTH - rightPanelWidth - 4,
     height: windowHeight - ACTION_BAR_HEIGHT,
   };
+}
+
+export function setRightPanelWidth(width: number): void {
+  rightPanelWidth = width;
+  if (mainWindow) {
+    const [w, h] = mainWindow.getContentSize();
+    layoutBrowserView(computeBrowserViewBounds(w, h));
+  }
 }
 
 export function getMainWindow(): BrowserWindow | null {

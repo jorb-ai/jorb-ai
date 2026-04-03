@@ -11,7 +11,7 @@ import { AppConfig, DEFAULT_CONFIG } from '../types/config.types';
 // Initialize electron-store with schema validation
 const store = new Store<AppConfig>({
   defaults: DEFAULT_CONFIG,
-  name: 'finbro-config'
+  name: 'jorb-config'
 });
 
 /**

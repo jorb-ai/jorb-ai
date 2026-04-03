@@ -6,6 +6,9 @@ export interface BrowserJobRow {
   created_at: string;
   result_meta?: any;
   error_message?: string;
+  // Enriched from jobs table (may be null for old rows)
+  title?: string;
+  company?: string;
 }
 
 export interface BrowserEvent {
@@ -31,6 +34,7 @@ declare global {
       };
       panel: {
         navigate: (url: string) => Promise<void>;
+        resize: (width: number) => Promise<void>;
       };
     };
     finbro?: {

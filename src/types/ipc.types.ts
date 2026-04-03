@@ -12,6 +12,7 @@ export enum IpcChannel {
   // Browser panel
   PANEL_NAVIGATE = 'panel:navigate',
   PANEL_GET_TAB_ID = 'panel:get-tab-id',
+  PANEL_RESIZE = 'panel:resize',
 
   // Browser automation
   BROWSER_STOP = 'browser:stop',

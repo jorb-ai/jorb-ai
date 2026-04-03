@@ -7,6 +7,7 @@ const IpcChannel = {
   AUTH_TOKEN_CHANGED: 'auth:token-changed',
   BROWSER_STOP: 'browser:stop',
   PANEL_NAVIGATE: 'panel:navigate',
+  PANEL_RESIZE: 'panel:resize',
 } as const;
 
 const finbroApi = {
@@ -35,6 +36,9 @@ const finbroApi = {
   panel: {
     navigate: async (url: string) => {
       return ipcRenderer.invoke(IpcChannel.PANEL_NAVIGATE, { url });
+    },
+    resize: async (width: number) => {
+      return ipcRenderer.invoke(IpcChannel.PANEL_RESIZE, { width });
     },
   },
 };
