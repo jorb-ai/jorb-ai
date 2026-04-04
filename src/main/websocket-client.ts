@@ -83,6 +83,11 @@ function handleServerMessage(message: any): void {
   if (message.type === 'file_sync_acknowledged') {
     return;
   }
+  // Triggered by tailor.py after PDF upload — re-sync files
+  if (message.type === 'file_sync_trigger') {
+    FileSync.requestFileSync();
+    return;
+  }
 
   // Command messages (have action field)
   const { id, action, params } = message;

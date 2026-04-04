@@ -5,6 +5,8 @@ const STEP_ICONS: Record<string, string> = {
   tool_call: '\u2699',
   status: '\u279C',
   error: '\u2716',
+  tailor_approved: '\u2705',
+  resumed: '\u25B6',
 };
 
 interface AgentStepProps {

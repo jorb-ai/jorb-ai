@@ -12,10 +12,21 @@ export interface BrowserJobRow {
 }
 
 export interface BrowserEvent {
-  type: 'tool_call' | 'status' | 'error';
+  type: 'tool_call' | 'status' | 'error' | 'paused_for_tailor' | 'tailor_approved' | 'resumed';
   tool?: string;
   message: string;
   ts: string;
+  doc_type?: 'resume' | 'cover_letter';
+  agent_job_id?: string;
+  file_path?: string;
+}
+
+export interface AgentJobEvent {
+  type: 'base_selected' | 'edit' | 'reasoning' | 'memory';
+  base_name?: string;
+  reasoning?: string;
+  text?: string;
+  [key: string]: any;
 }
 
 declare global {

@@ -177,6 +177,10 @@ export const App: React.FC = () => {
     window.Finbro.panel.navigate(url);
   }, []);
 
+  const handleStop = useCallback((jobId: string) => {
+    window.Finbro.browser.stop(jobId);
+  }, []);
+
   const activeJob = sessions.find((s) => s.id === activeJobId) || null;
 
   return (
@@ -190,7 +194,7 @@ export const App: React.FC = () => {
         />
       </div>
       <div className="panel-middle">
-        <ActionBar />
+        <ActionBar activeJob={activeJob} onStop={handleStop} />
       </div>
       <div className="panel-resize-handle" onMouseDown={onResizeStart} />
       <div className="panel-right" style={{ width: rightWidth, minWidth: rightWidth }}>

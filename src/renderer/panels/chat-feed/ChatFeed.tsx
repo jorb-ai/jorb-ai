@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { AgentStep } from '../../components/AgentStep';
+import { TailorThread } from '../../components/TailorThread';
 import { StreamingDots } from '../../components/StreamingDots';
 import type { BrowserEvent } from '../../types';
 
@@ -16,7 +17,7 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ events, isRunning = false })
   }, [events.length]);
 
   const lastEvent = events.length > 0 ? events[events.length - 1] : null;
-  const showStreaming = isRunning && lastEvent?.type !== 'error';
+  const showStreaming = isRunning && lastEvent?.type !== 'error' && lastEvent?.type !== 'paused_for_tailor';
 
   return (
     <div className="chat-feed">
@@ -35,9 +36,15 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ events, isRunning = false })
             Agent is starting up...
           </div>
         )}
-        {events.map((event, i) => (
-          <AgentStep key={`${event.ts}-${i}`} event={event} index={i} />
-        ))}
+        {events.map((event, i) => {
+          if (event.type === 'paused_for_tailor') {
+            return <TailorThread key={`${event.ts}-${i}`} event={event} />;
+          }
+          if (event.type === 'tailor_approved' || event.type === 'resumed') {
+            return null;
+          }
+          return <AgentStep key={`${event.ts}-${i}`} event={event} index={i} />;
+        })}
         <div ref={bottomRef} />
       </div>
     </div>

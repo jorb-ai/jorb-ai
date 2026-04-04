@@ -146,6 +146,23 @@ export async function enrichBrowserJob(row: any): Promise<any> {
   return { ...row, title: data?.role || null, company: data?.company || null };
 }
 
+// Sub-agent job: Realtime subscription for tailoring progress (Phase 2)
+export function subscribeAgentJob(
+  agentJobId: string,
+  onUpdate: (row: any) => void,
+): RealtimeChannel | null {
+  if (!supabase) return null;
+
+  return supabase
+    .channel(`agent-job-${agentJobId}`)
+    .on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'agent_jobs', filter: `id=eq.${agentJobId}` },
+      (payload) => onUpdate(payload.new),
+    )
+    .subscribe();
+}
+
 // Look up a job's portal URL from the jobs table
 export async function fetchJobLink(jobId: string): Promise<string | null> {
   if (!supabase) return null;
