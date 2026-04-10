@@ -17,6 +17,7 @@ export const colors = {
   statusFailed: '#ef4444',
   statusStopped: '#f97316',
   statusQueued: '#9ca3af',
+  statusNeedsAttention: '#8b5cf6',
 } as const;
 
 export const statusBg: Record<string, string> = {
@@ -25,6 +26,7 @@ export const statusBg: Record<string, string> = {
   completed: 'rgba(34, 197, 94, 0.13)',
   failed: 'rgba(239, 68, 68, 0.12)',
   stopped: 'rgba(249, 115, 22, 0.12)',
+  needs_attention: 'rgba(139, 92, 246, 0.14)',
 };
 
 export const statusText: Record<string, string> = {
@@ -33,4 +35,5 @@ export const statusText: Record<string, string> = {
   completed: '#15803d',
   failed: '#dc2626',
   stopped: '#c2410c',
+  needs_attention: '#7c3aed',
 };

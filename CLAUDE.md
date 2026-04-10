@@ -28,6 +28,7 @@ Three-panel layout: left (sessions), middle (BrowserView + action bar), right (a
 src/
 ├── main/                        # Electron main process
 │   ├── main.ts                  # App lifecycle
+│   ├── logger.ts                # electron-log setup (import from here, not electron-log directly)
 │   ├── config.ts                # electron-store config
 │   ├── windows.ts               # Window creation, panel layout
 │   ├── panels.ts                # BrowserView management + CDP debugger
@@ -67,6 +68,28 @@ src/
 - **components/** = shared primitives used across panels. Must be generic.
 - Panel-specific sub-components live inside their panel folder, not in components/.
 - If a sub-component is used by 2+ panels, promote it to components/.
+
+## Logging
+
+Main process uses `electron-log`. Renderer keeps `console.*` (DevTools only).
+
+```ts
+import log from './logger';
+
+log.debug('[Module] ...');  // suppressed in production
+log.info('[Module] ...');   // operational milestones
+log.warn('[Module] ...');   // unexpected but non-fatal
+log.error('[Module] ...');  // failures
+```
+
+Rules:
+- Every log message starts with `[ModuleName]` bracket prefix.
+- No emoji in log messages.
+- No raw `console.*` in main process code.
+- `debug` = high-volume diagnostics (per-file downloads, CDP nav, signed URLs, path details).
+- `info` = operational milestones (startup, connection, sync complete).
+- Default level: `info` in production, `debug` when `config.debugMode` is true.
+- Log files: `~/Library/Logs/Jorb AI/main.log` (macOS).
 
 ## Communication
 

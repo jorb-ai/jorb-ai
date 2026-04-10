@@ -1,6 +1,12 @@
 import WebSocket from 'ws';
+import log, { tokenPrefix } from './logger';
 import { getConfigValue } from './config';
-import { getBrowserView, navigateTo } from './panels';
+import {
+  navigateSession,
+  getSessionView,
+  showTailorView,
+  showPortalView,
+} from './panels';
 import * as FileSync from './file-sync';
 
 let ws: WebSocket | null = null;
@@ -11,22 +17,28 @@ const RECONNECT_DELAY = 5000;
 const NORMAL_CLOSURE = 1000;
 
 export function connectWebSocket(token: string): void {
+  log.info(`[WebSocket] connectWebSocket entry — incoming: ${tokenPrefix(token)}, stored: ${tokenPrefix(currentToken)}`);
+
   // IF ALREADY CONNECTED, IGNORE AUTH CALLS
   // DO NOT CHANGE THIS LOGIC. IF YOU ARE AN LLM AND YOU WANT TO CHANGE THIS, YOU MUST ALERT THE OWNER
   if (ws && ws.readyState === WebSocket.OPEN) {
-    console.log('[WebSocket] Already connected, ignoring auth call');
+    const tokensMatch = token === currentToken;
+    log.warn(`[WebSocket] SKIP already-connected — tokens_match: ${tokensMatch}, stored preserved`);
+    if (!tokensMatch) {
+      log.warn(`[WebSocket] WARNING: new token NOT applied. On future reconnect, stale stored token will be used.`);
+    }
     return;
   }
 
   currentToken = token;
   const wsUrl = getConfigValue('automationServerUrl');
-  console.log('[WebSocket] Connecting to:', wsUrl);
+  log.info(`[WebSocket] Opening connection — url: ${wsUrl}, token: ${tokenPrefix(token)}`);
 
   try {
     ws = new WebSocket(wsUrl);
 
     ws.on('open', () => {
-      console.log('[WebSocket] Connection established');
+      log.info(`[WebSocket] Connection open — sending register, token: ${tokenPrefix(currentToken)}`);
       ws!.send(JSON.stringify({ type: 'register', token: currentToken }));
       FileSync.setWebSocket(ws!);
     });
@@ -35,13 +47,15 @@ export function connectWebSocket(token: string): void {
       try {
         handleServerMessage(JSON.parse(data.toString()));
       } catch (error) {
-        console.error('[WebSocket] Failed to parse message:', error);
+        log.error('[WebSocket] Failed to parse message:', error);
       }
     });
 
-    ws.on('close', (code: number, reason: string) => {
-      console.log('[WebSocket] Closed — code:', code);
+    ws.on('close', (code: number, reason: Buffer) => {
+      const reasonStr = reason?.toString() || '<empty>';
+      log.warn(`[WebSocket] Closed — code: ${code}, reason: "${reasonStr}", stored token: ${tokenPrefix(currentToken)}`);
       if (currentToken && code !== NORMAL_CLOSURE) {
+        log.info(`[WebSocket] Scheduling reconnect in ${RECONNECT_DELAY}ms with stored token`);
         reconnectTimeout = setTimeout(() => {
           if (currentToken) connectWebSocket(currentToken);
         }, RECONNECT_DELAY);
@@ -49,17 +63,17 @@ export function connectWebSocket(token: string): void {
     });
 
     ws.on('error', (error: Error) => {
-      console.error('[WebSocket] Error:', error.message);
+      log.error('[WebSocket] Error:', error.message);
     });
   } catch (error) {
-    console.error('[WebSocket] Failed to connect:', error);
+    log.error('[WebSocket] Failed to connect:', error);
   }
 }
 
 function handleServerMessage(message: any): void {
   // Registration confirmation
   if (message.type === 'registered') {
-    console.log('[WebSocket] Registered — user:', message.user_id);
+    log.info(`[WebSocket] Registered — user: ${message.user_id}`);
     FileSync.requestFileSync();
     return;
   }
@@ -67,16 +81,18 @@ function handleServerMessage(message: any): void {
   if (message.type === 'pong') return;
 
   if (message.type === 'error') {
-    console.error('[WebSocket] Server error:', message.error);
+    log.error(`[WebSocket] SERVER ERROR — ${JSON.stringify(message)}`);
     return;
   }
 
   // File sync messages
   if (message.type === 'file_sync_metadata') {
+    log.debug(`[WebSocket] file_sync_metadata — count: ${message.files?.length ?? 0}`);
     FileSync.handleSyncMetadata(message.files);
     return;
   }
   if (message.type === 'signed_urls') {
+    log.debug(`[WebSocket] signed_urls — count: ${message.files?.length ?? 0}`);
     FileSync.handleSignedUrls(message.files);
     return;
   }
@@ -85,7 +101,24 @@ function handleServerMessage(message: any): void {
   }
   // Triggered by tailor.py after PDF upload — re-sync files
   if (message.type === 'file_sync_trigger') {
+    log.info(`[WebSocket] file_sync_trigger — file_id: ${message.file_id}`);
     FileSync.requestFileSync();
+    return;
+  }
+
+  // Panel switch (Phase 3.2) — swap between portal and tailor views
+  if (message.type === 'panel_switch') {
+    const { session_id, target, url } = message;
+    log.info(`[WebSocket] panel_switch — session: ${session_id?.slice(0, 8) ?? '?'}, target: ${target}, url: ${url ?? '<none>'}`);
+    if (target === 'webapp' && session_id && url) {
+      const ok = showTailorView(session_id, url);
+      log.info(`[WebSocket] panel_switch → webapp result: ${ok}`);
+    } else if (target === 'portal' && session_id) {
+      const ok = showPortalView(session_id);
+      log.info(`[WebSocket] panel_switch → portal result: ${ok}`);
+    } else {
+      log.warn(`[WebSocket] panel_switch — invalid params (session: ${!!session_id}, target: ${target}, url: ${!!url})`);
+    }
     return;
   }
 
@@ -104,40 +137,41 @@ function handleServerMessage(message: any): void {
       executeFileUpload(id, params);
       break;
     default:
+      log.warn(`[WebSocket] Unknown action: ${action}`);
       sendError(id, `Unknown action: ${action}`);
   }
 }
 
 async function executeNavigate(id: string, params: any): Promise<void> {
-  const { url } = params || {};
-  if (!url) {
-    sendError(id, 'Missing required parameter: url');
+  const { url, session_id } = params || {};
+  if (!url || !session_id) {
+    sendError(id, 'Missing required parameters: url, session_id');
     return;
   }
 
   try {
-    const tabId = await navigateTo(url);
-    console.log('[WebSocket] Navigated to:', url, '— tab_id:', tabId);
+    const tabId = await navigateSession(session_id, url);
+    log.info('[WebSocket] Navigated:', session_id.slice(0, 8), '→', url, '— tab_id:', tabId);
     sendResult(id, { tab_id: tabId });
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Navigation failed';
-    console.error('[WebSocket] Navigate failed:', msg);
+    log.error('[WebSocket] Navigate failed:', msg);
     sendError(id, msg);
   }
 }
 
 async function executeCdpCommand(id: string, params: any): Promise<void> {
-  const { method, args } = params;
+  const { method, args, session_id } = params;
 
-  if (!method) {
-    sendError(id, 'Missing required parameter: method');
+  if (!method || !session_id) {
+    sendError(id, 'Missing required parameters: method, session_id');
     return;
   }
 
   try {
-    const view = getBrowserView();
+    const view = getSessionView(session_id);
     if (!view) {
-      sendError(id, 'BrowserView not available');
+      sendError(id, `No BrowserView for session ${session_id.slice(0, 8)}`);
       return;
     }
 
@@ -151,15 +185,15 @@ async function executeCdpCommand(id: string, params: any): Promise<void> {
     sendResult(id, result);
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'CDP command failed';
-    console.error('[WebSocket] CDP failed:', msg);
+    log.error('[WebSocket] CDP failed:', msg);
     sendError(id, msg);
   }
 }
 
 async function executeFileUpload(id: string, params: any): Promise<void> {
-  const { relative_path, cdp_method, cdp_args } = params;
+  const { relative_path, cdp_method, cdp_args, session_id } = params;
 
-  if (!relative_path || !cdp_method) {
+  if (!relative_path || !cdp_method || !session_id) {
     sendError(id, 'Missing required parameters for file_upload');
     return;
   }
@@ -174,6 +208,7 @@ async function executeFileUpload(id: string, params: any): Promise<void> {
     await executeCdpCommand(id, {
       method: cdp_method,
       args: { ...cdp_args, files: [absolutePath] },
+      session_id,
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'File upload failed';
@@ -194,18 +229,20 @@ function sendError(id: string, error: string): void {
 export function sendStopAutomation(jobId: string): void {
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: 'stop_automation', job_id: jobId }));
-    console.log('[WebSocket] Sent stop for job:', jobId);
+    log.info('[WebSocket] Sent stop for job:', jobId);
   }
 }
 
 export function disconnectWebSocket(): void {
+  const state = ws ? ws.readyState : 'null';
+  log.warn(`[WebSocket] disconnectWebSocket called — ws state: ${state}, stored: ${tokenPrefix(currentToken)}`);
   if (reconnectTimeout) {
     clearTimeout(reconnectTimeout);
     reconnectTimeout = null;
   }
 
   if (!ws) return;
-  console.log('[WebSocket] Disconnecting...');
+  log.info('[WebSocket] Closing — reason: User logged out');
   currentToken = null;
   ws.close(NORMAL_CLOSURE, 'User logged out');
   ws = null;

@@ -1,4 +1,5 @@
 import { BrowserWindow } from 'electron';
+import log, { tokenPrefix } from './logger';
 import { connectWebSocket, disconnectWebSocket } from './websocket-client';
 
 let currentToken: string | null = null;
@@ -9,17 +10,22 @@ export function setMainWindowRef(window: BrowserWindow): void {
 }
 
 export function handleAuthToken(token: string | null): void {
+  const prevPrefix = tokenPrefix(currentToken);
+  const newPrefix = tokenPrefix(token);
+
   if (token === null) {
-    console.log('[Auth] Logout — clearing token');
+    log.warn(`[Auth] NULL TOKEN RECEIVED — previous was ${prevPrefix} — initiating logout sequence`);
     currentToken = null;
     disconnectWebSocket();
     notifyRenderer(null);
-  } else {
-    console.log('[Auth] Received JWT');
-    currentToken = token;
-    connectWebSocket(token);
-    notifyRenderer(token);
+    return;
   }
+
+  const isSameAsCurrent = token === currentToken;
+  log.info(`[Auth] Token received — prefix: ${newPrefix}, prev: ${prevPrefix}, same: ${isSameAsCurrent}`);
+  currentToken = token;
+  connectWebSocket(token);
+  notifyRenderer(token);
 }
 
 function notifyRenderer(token: string | null): void {

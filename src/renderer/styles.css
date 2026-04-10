@@ -141,6 +141,11 @@ body {
   letter-spacing: 0;
 }
 
+.sidebar__badge--attention {
+  color: #7c3aed;
+  background: rgba(139, 92, 246, 0.14);
+}
+
 /* ── Nav items — purple tinted like session rows ──────── */
 
 .sidebar__nav-item {
@@ -202,12 +207,24 @@ body {
   font-weight: 500;
 }
 
+.session-row__indicator {
+  flex-shrink: 0;
+  font-size: 10px;
+  line-height: 1;
+  animation: pulse-attention 2s ease-in-out infinite;
+}
+
 .session-row__label {
   font-size: 11.5px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1;
+}
+
+@keyframes pulse-attention {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 
 /* ── Legend — single compact row ──────────────────────── */
@@ -267,6 +284,7 @@ body {
 
 .action-bar__status--running { color: #a16207; }
 .action-bar__status--tailoring { color: var(--brand); }
+.action-bar__status--needs-review { color: #7c3aed; }
 
 .action-bar__dot {
   width: 6px;
@@ -277,6 +295,7 @@ body {
 
 .action-bar__dot--running { background: #eab308; }
 .action-bar__dot--tailoring { background: var(--brand); }
+.action-bar__dot--needs-review { background: #8b5cf6; animation: pulse-attention 2s ease-in-out infinite; }
 
 .action-bar__stop {
   padding: 2px 10px;
@@ -418,8 +437,22 @@ body {
   color: #15803d;
 }
 
+.tailor-thread__step--review {
+  color: #7c3aed;
+  font-weight: 500;
+}
+
 .tailor-thread__step--error {
   color: #dc2626;
+}
+
+.tailor-thread--reviewable {
+  cursor: pointer;
+  transition: filter 0.1s;
+}
+
+.tailor-thread--reviewable:hover {
+  filter: brightness(0.95);
 }
 
 /* ── Streaming Dots ────────────────────────────────────── */

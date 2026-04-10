@@ -6,11 +6,13 @@ import type { BrowserEvent, AgentJobEvent } from '../types';
 
 interface TailorThreadProps {
   event: BrowserEvent;
+  onClickReview?: () => void;
 }
 
-export const TailorThread: React.FC<TailorThreadProps> = ({ event }) => {
+export const TailorThread: React.FC<TailorThreadProps> = ({ event, onClickReview }) => {
   const [agentEvents, setAgentEvents] = useState<AgentJobEvent[]>([]);
   const [status, setStatus] = useState<string>('queued');
+  const [isApproved, setIsApproved] = useState(false);
 
   const agentJobId = event.agent_job_id;
   const docType = event.doc_type === 'resume' ? 'Resume' : 'Cover Letter';
@@ -23,6 +25,9 @@ export const TailorThread: React.FC<TailorThreadProps> = ({ event }) => {
       if (row.events) {
         setAgentEvents(row.events);
       }
+      if (row.is_approved) {
+        setIsApproved(true);
+      }
     });
 
     return () => {
@@ -33,14 +38,27 @@ export const TailorThread: React.FC<TailorThreadProps> = ({ event }) => {
   }, [agentJobId]);
 
   const isActive = status === 'queued' || status === 'running';
+  const isComplete = status === 'completed';
   const editCount = agentEvents.filter((e) => e.type === 'edit').length;
+  const needsReview = isComplete && !isApproved;
 
   return (
-    <div className="tailor-thread">
+    <div
+      className={`tailor-thread ${needsReview ? 'tailor-thread--reviewable' : ''}`}
+      onClick={needsReview && onClickReview ? onClickReview : undefined}
+    >
       <div className="tailor-thread__header">
-        <span className="tailor-thread__icon">{isActive ? '\u2728' : '\u2705'}</span>
+        <span className="tailor-thread__icon">
+          {isApproved ? '\u2705' : isActive ? '\u2728' : '\u26A0'}
+        </span>
         <span className="tailor-thread__title">
-          {isActive ? `Tailoring ${docType}` : `${docType} Tailored`}
+          {isApproved
+            ? `${docType} Approved`
+            : isActive
+              ? `Tailoring ${docType}`
+              : needsReview
+                ? `${docType} Ready — Click to Review`
+                : `${docType} Tailored`}
         </span>
         {isActive && <StreamingDots color={colors.brand} />}
       </div>
@@ -58,7 +76,12 @@ export const TailorThread: React.FC<TailorThreadProps> = ({ event }) => {
             {isActive ? `${editCount} edit${editCount !== 1 ? 's' : ''} so far...` : `${editCount} edit${editCount !== 1 ? 's' : ''} applied`}
           </span>
         )}
-        {status === 'completed' && (
+        {isComplete && !isApproved && (
+          <span className="tailor-thread__step tailor-thread__step--review">
+            Awaiting your approval
+          </span>
+        )}
+        {isApproved && (
           <span className="tailor-thread__step tailor-thread__step--done">
             Generating PDF...
           </span>

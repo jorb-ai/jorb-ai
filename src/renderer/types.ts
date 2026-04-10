@@ -29,6 +29,19 @@ export interface AgentJobEvent {
   [key: string]: any;
 }
 
+/** Derived display status for session rows (Phase 3). */
+export type SessionDisplayStatus = BrowserJobRow['status'] | 'needs_attention';
+
+/** Derive the display status from a browser job row. */
+export function deriveDisplayStatus(job: BrowserJobRow): SessionDisplayStatus {
+  if (job.status !== 'running') return job.status;
+  const events = job.events || [];
+  const pauseCount = events.filter((e) => e.type === 'paused_for_tailor').length;
+  const approvedCount = events.filter((e) => e.type === 'tailor_approved').length;
+  if (pauseCount > approvedCount) return 'needs_attention';
+  return 'running';
+}
+
 declare global {
   interface Window {
     Finbro: {
@@ -46,6 +59,12 @@ declare global {
       panel: {
         navigate: (url: string) => Promise<void>;
         resize: (width: number) => Promise<void>;
+      };
+      session: {
+        show: (sessionId: string) => Promise<boolean>;
+        showTailor: (sessionId: string) => Promise<boolean>;
+        destroy: (sessionId: string) => Promise<void>;
+        status: () => Promise<{ count: number; atCapacity: boolean }>;
       };
     };
     finbro?: {

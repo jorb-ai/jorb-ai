@@ -1,22 +1,21 @@
+import log from './logger';
 import { app, BrowserWindow } from 'electron';
 import { createMainWindow } from './windows';
 import { registerIpcHandlers } from './ipc';
 import { initFileSync } from './file-sync';
+import { getConfigPath } from './config';
 
-console.log('='.repeat(50));
-console.log('jorb.ai — Starting');
-console.log('Electron:', process.versions.electron);
-console.log('Chrome:', process.versions.chrome);
-console.log('='.repeat(50));
+log.info('jorb.ai starting — Electron:', process.versions.electron, '| Chrome:', process.versions.chrome);
 
 app.whenReady().then(async () => {
-  console.log('[Main] App ready');
+  log.info('[Main] App ready');
+  log.info('[Config] Storage path:', getConfigPath());
 
   await initFileSync();
   registerIpcHandlers();
   await createMainWindow();
 
-  console.log('[Main] Initialization complete');
+  log.info('[Main] Initialization complete');
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -32,15 +31,15 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
-  console.log('[Main] Shutting down...');
+  log.info('[Main] Shutting down...');
 });
 
 process.on('uncaughtException', (error) => {
-  console.error('[Main] Uncaught exception:', error);
+  log.error('[Main] Uncaught exception:', error);
 });
 
 process.on('unhandledRejection', (reason) => {
-  console.error('[Main] Unhandled rejection:', reason);
+  log.error('[Main] Unhandled rejection:', reason);
 });
 
 app.on('web-contents-created', (_event, contents) => {

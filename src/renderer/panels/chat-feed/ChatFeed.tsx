@@ -7,9 +7,10 @@ import type { BrowserEvent } from '../../types';
 interface ChatFeedProps {
   events: BrowserEvent[];
   isRunning?: boolean;
+  activeJobId?: string | null;
 }
 
-export const ChatFeed: React.FC<ChatFeedProps> = ({ events, isRunning = false }) => {
+export const ChatFeed: React.FC<ChatFeedProps> = ({ events, isRunning = false, activeJobId }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -18,6 +19,11 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ events, isRunning = false })
 
   const lastEvent = events.length > 0 ? events[events.length - 1] : null;
   const showStreaming = isRunning && lastEvent?.type !== 'error' && lastEvent?.type !== 'paused_for_tailor';
+
+  const handleClickReview = (sessionId: string) => {
+    // Bring this session's tailor view (viewB) to the front
+    window.Finbro.session.showTailor(sessionId);
+  };
 
   return (
     <div className="chat-feed">
@@ -38,7 +44,13 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ events, isRunning = false })
         )}
         {events.map((event, i) => {
           if (event.type === 'paused_for_tailor') {
-            return <TailorThread key={`${event.ts}-${i}`} event={event} />;
+            return (
+              <TailorThread
+                key={`${event.ts}-${i}`}
+                event={event}
+                onClickReview={activeJobId ? () => handleClickReview(activeJobId) : undefined}
+              />
+            );
           }
           if (event.type === 'tailor_approved' || event.type === 'resumed') {
             return null;

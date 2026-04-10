@@ -1,11 +1,5 @@
-/**
- * Configuration Manager
- * 
- * Handles persistent storage of application configuration using electron-store.
- * Provides type-safe access to config with defaults.
- */
-
 import Store from 'electron-store';
+import log from './logger';
 import { AppConfig, DEFAULT_CONFIG } from '../types/config.types';
 
 // Initialize electron-store with schema validation
@@ -32,9 +26,7 @@ export function setConfig(updates: Partial<AppConfig>): void {
   const updated = { ...current, ...updates };
   store.store = updated;
   
-  if (updated.debugMode) {
-    console.log('[Config] Updated:', updates);
-  }
+  log.debug('[Config] Updated:', updates);
 }
 
 /**
@@ -58,21 +50,9 @@ export function setConfigValue<K extends keyof AppConfig>(
 ): void {
   store.set(key, value);
   
-  if (getConfigValue('debugMode')) {
-    console.log(`[Config] Set ${String(key)}:`, value);
-  }
+  log.debug(`[Config] Set ${String(key)}:`, value);
 }
 
-/**
- * Get the file path where config is stored
- * Useful for debugging
- */
 export function getConfigPath(): string {
   return store.path;
 }
-
-// Log config path on startup for debugging
-console.log('[Config] Storage path:', getConfigPath());
-
-// Removed unused: resetConfig, isFirstRun
-

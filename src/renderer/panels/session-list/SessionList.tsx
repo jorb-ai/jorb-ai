@@ -9,10 +9,12 @@ interface SessionListProps {
   activeJobId: string | null;
   onSelect: (jobId: string) => void;
   onNavigate: (url: string) => void;
+  needsAttentionCount: number;
 }
 
 const LEGEND = [
   { color: colors.statusRunning, label: 'Active' },
+  { color: colors.statusNeedsAttention, label: 'Review' },
   { color: colors.statusCompleted, label: 'Done' },
   { color: colors.statusFailed, label: 'Failed' },
   { color: colors.statusQueued, label: 'Queued' },
@@ -23,6 +25,7 @@ export const SessionList: React.FC<SessionListProps> = ({
   activeJobId,
   onSelect,
   onNavigate,
+  needsAttentionCount,
 }) => {
   return (
     <div className="sidebar">
@@ -56,6 +59,11 @@ export const SessionList: React.FC<SessionListProps> = ({
           Applications
           {sessions.length > 0 && (
             <span className="sidebar__badge">{sessions.length}</span>
+          )}
+          {needsAttentionCount > 0 && (
+            <span className="sidebar__badge sidebar__badge--attention">
+              {needsAttentionCount}
+            </span>
           )}
         </div>
         <div className="sidebar__list">

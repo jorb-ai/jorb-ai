@@ -2,20 +2,22 @@ import React from 'react';
 import { StreamingDots } from '../../components/StreamingDots';
 import { colors } from '../../lib/colors';
 import type { BrowserJobRow } from '../../types';
+import { deriveDisplayStatus } from '../../types';
 
 interface ActionBarProps {
   activeJob: BrowserJobRow | null;
   onStop: (jobId: string) => void;
 }
 
-type Mode = 'idle' | 'running' | 'tailoring';
+type Mode = 'idle' | 'running' | 'tailoring' | 'needs_review';
 
 function deriveMode(job: BrowserJobRow | null): Mode {
   if (!job || job.status !== 'running') return 'idle';
+  const displayStatus = deriveDisplayStatus(job);
+  if (displayStatus === 'needs_attention') return 'needs_review';
   const events = job.events || [];
   const hasPaused = events.some((e) => e.type === 'paused_for_tailor');
   const hasResumed = events.some((e) => e.type === 'resumed');
-  // Tailoring if paused and not yet resumed (count-based for multiple cycles)
   const pauseCount = events.filter((e) => e.type === 'paused_for_tailor').length;
   const resumeCount = events.filter((e) => e.type === 'resumed').length;
   if (hasPaused && pauseCount > resumeCount) return 'tailoring';
@@ -62,6 +64,21 @@ export const ActionBar: React.FC<ActionBarProps> = ({ activeJob, onStop }) => {
               <span className="action-bar__dot action-bar__dot--tailoring" />
               Tailoring {docTypeLabel(activeJob.events)}
               <StreamingDots color={colors.brand} />
+            </span>
+            <button
+              className="action-bar__stop"
+              onClick={() => onStop(activeJob.id)}
+            >
+              Stop
+            </button>
+          </>
+        )}
+
+        {mode === 'needs_review' && activeJob && (
+          <>
+            <span className="action-bar__status action-bar__status--needs-review">
+              <span className="action-bar__dot action-bar__dot--needs-review" />
+              {docTypeLabel(activeJob.events)} ready — review and approve
             </span>
             <button
               className="action-bar__stop"

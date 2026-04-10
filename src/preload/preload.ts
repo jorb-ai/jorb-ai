@@ -8,6 +8,10 @@ const IpcChannel = {
   BROWSER_STOP: 'browser:stop',
   PANEL_NAVIGATE: 'panel:navigate',
   PANEL_RESIZE: 'panel:resize',
+  SESSION_SHOW: 'session:show',
+  SESSION_SHOW_TAILOR: 'session:show-tailor',
+  SESSION_DESTROY: 'session:destroy',
+  SESSION_STATUS: 'session:status',
 } as const;
 
 const finbroApi = {
@@ -39,6 +43,21 @@ const finbroApi = {
     },
     resize: async (width: number) => {
       return ipcRenderer.invoke(IpcChannel.PANEL_RESIZE, { width });
+    },
+  },
+
+  session: {
+    show: async (sessionId: string) => {
+      return ipcRenderer.invoke(IpcChannel.SESSION_SHOW, { sessionId });
+    },
+    showTailor: async (sessionId: string) => {
+      return ipcRenderer.invoke(IpcChannel.SESSION_SHOW_TAILOR, { sessionId });
+    },
+    destroy: async (sessionId: string) => {
+      return ipcRenderer.invoke(IpcChannel.SESSION_DESTROY, { sessionId });
+    },
+    status: async () => {
+      return ipcRenderer.invoke(IpcChannel.SESSION_STATUS);
     },
   },
 };

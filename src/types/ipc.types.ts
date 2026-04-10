@@ -9,7 +9,13 @@ export enum IpcChannel {
   AUTH_SEND_TOKEN = 'auth:send-token',
   AUTH_TOKEN_CHANGED = 'auth:token-changed',
 
-  // Browser panel
+  // Session lifecycle (Phase 3)
+  SESSION_SHOW = 'session:show',
+  SESSION_SHOW_TAILOR = 'session:show-tailor',
+  SESSION_DESTROY = 'session:destroy',
+  SESSION_STATUS = 'session:status',
+
+  // Browser panel (legacy — kept for web app nav)
   PANEL_NAVIGATE = 'panel:navigate',
   PANEL_GET_TAB_ID = 'panel:get-tab-id',
   PANEL_RESIZE = 'panel:resize',

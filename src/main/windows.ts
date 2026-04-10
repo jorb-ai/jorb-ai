@@ -1,7 +1,8 @@
 import { BrowserWindow, screen } from 'electron';
 import * as path from 'path';
+import log from './logger';
 import { getConfig } from './config';
-import { createBrowserView, layoutBrowserView, destroy as destroyPanels } from './panels';
+import { init as initPanels, layoutBrowserViews, destroyAll as destroyAllPanels, navigateSession } from './panels';
 import { setMainWindowRef } from './auth';
 
 let mainWindow: BrowserWindow | null = null;
@@ -11,7 +12,7 @@ const ACTION_BAR_HEIGHT = 34;
 let rightPanelWidth = 260;
 
 export async function createMainWindow(): Promise<BrowserWindow> {
-  console.log('[Windows] Creating main window...');
+  log.info('[Windows] Creating main window...');
 
   const config = getConfig();
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
@@ -41,21 +42,23 @@ export async function createMainWindow(): Promise<BrowserWindow> {
   const rendererPath = path.join(__dirname, '../renderer/index.html');
   await mainWindow.loadFile(rendererPath);
 
-  // Create BrowserView for middle panel and load web app
+  // Initialize lifecycle manager and load web app as the default session
   const contentSize = mainWindow.getContentSize();
-  const view = createBrowserView(mainWindow, computeBrowserViewBounds(contentSize[0], contentSize[1]));
-  view.webContents.loadURL('http://localhost:3000').catch(() => {
-    console.log('[Windows] localhost:3000 not available — BrowserView blank');
+  initPanels(mainWindow, computeBrowserViewBounds(contentSize[0], contentSize[1]));
+
+  // Load web app immediately so user can browse and trigger auto-apply
+  navigateSession('__webapp__', 'http://localhost:3000').catch(() => {
+    log.warn('[Windows] localhost:3000 not available — BrowserView blank');
   });
 
   mainWindow.on('resize', () => {
     if (!mainWindow) return;
     const [w, h] = mainWindow.getContentSize();
-    layoutBrowserView(computeBrowserViewBounds(w, h));
+    layoutBrowserViews(computeBrowserViewBounds(w, h));
   });
 
   mainWindow.on('closed', () => {
-    destroyPanels();
+    destroyAllPanels();
     mainWindow = null;
   });
 
@@ -63,7 +66,7 @@ export async function createMainWindow(): Promise<BrowserWindow> {
     mainWindow.webContents.openDevTools({ mode: 'right' });
   }
 
-  console.log('[Windows] Main window created');
+  log.info('[Windows] Main window created');
   return mainWindow;
 }
 
@@ -81,7 +84,7 @@ export function setRightPanelWidth(width: number): void {
   rightPanelWidth = width;
   if (mainWindow) {
     const [w, h] = mainWindow.getContentSize();
-    layoutBrowserView(computeBrowserViewBounds(w, h));
+    layoutBrowserViews(computeBrowserViewBounds(w, h));
   }
 }
 

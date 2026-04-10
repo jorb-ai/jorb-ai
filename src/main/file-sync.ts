@@ -1,15 +1,9 @@
-/**
- * File Sync Manager
- * 
- * Manages local file synchronization with Supabase storage.
- * Downloads missing files, deletes orphaned files, maintains metadata.
- */
-
 import { app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as https from 'https';
 import WebSocket from 'ws';
+import log from './logger';
 
 // WebSocket reference for sending messages
 let ws: WebSocket | null = null;
@@ -30,7 +24,7 @@ const METADATA_FILE = path.join(USER_DATA_PATH, 'metadata.txt');
  */
 export function setWebSocket(websocket: WebSocket): void {
   ws = websocket;
-  console.log('[FileSync] WebSocket reference set');
+  log.info('[FileSync] WebSocket reference set');
 }
 
 /**
@@ -38,9 +32,9 @@ export function setWebSocket(websocket: WebSocket): void {
  * Creates directories and loads metadata
  */
 export async function initFileSync(): Promise<void> {
-  console.log('[FileSync] Initializing file sync...');
-  console.log('[FileSync] User data path:', USER_DATA_PATH);
-  console.log('[FileSync] Files directory:', FILES_DIR);
+  log.info('[FileSync] Initializing file sync...');
+  log.debug('[FileSync] User data path:', USER_DATA_PATH);
+  log.debug('[FileSync] Files directory:', FILES_DIR);
   
   try {
     // Ensure directories exist
@@ -48,11 +42,11 @@ export async function initFileSync(): Promise<void> {
     
     // Load existing metadata
     localIds = loadLocalIds();
-    console.log('[FileSync] Loaded', localIds.size, 'files from metadata');
-    
-    console.log('[FileSync] ✅ Initialization complete');
+    log.info('[FileSync] Loaded', localIds.size, 'files from metadata');
+
+    log.info('[FileSync] Initialization complete');
   } catch (error) {
-    console.error('[FileSync] ❌ Initialization failed:', error);
+    log.error('[FileSync] Initialization failed:', error);
   }
 }
 
@@ -62,19 +56,19 @@ export async function initFileSync(): Promise<void> {
  */
 export function requestFileSync(): void {
   if (!ws || ws.readyState !== WebSocket.OPEN) {
-    console.error('[FileSync] Cannot request sync - WebSocket not connected');
+    log.error('[FileSync] Cannot request sync - WebSocket not connected');
     return;
   }
-  
-  console.log('[FileSync] 📤 Requesting file sync...');
-  
+
+  log.info('[FileSync] Requesting file sync...');
+
   try {
     ws.send(JSON.stringify({
       type: 'file_sync_init'
     }));
-    console.log('[FileSync] ✅ File sync request sent');
+    log.info('[FileSync] File sync request sent');
   } catch (error) {
-    console.error('[FileSync] ❌ Failed to send sync request:', error);
+    log.error('[FileSync] Failed to send sync request:', error);
   }
 }
 
@@ -84,18 +78,17 @@ export function requestFileSync(): void {
  */
 export async function handleSyncMetadata(files: Array<{id: string, file_name: string}>): Promise<void> {
   if (isSyncing) {
-    console.warn('[FileSync] Sync already in progress, ignoring request');
+    log.warn('[FileSync] Sync already in progress, ignoring request');
     return;
   }
-  
+
   isSyncing = true;
-  console.log('[FileSync] 📥 Received metadata for', files.length, 'files');
-  
+  log.info('[FileSync] Received metadata for', files.length, 'files');
+
   try {
-    // Extract server IDs
     const serverIds = new Set(files.map(f => f.id));
-    console.log('[FileSync] Server has', serverIds.size, 'files');
-    console.log('[FileSync] Local has', localIds.size, 'files');
+    log.debug('[FileSync] Server has', serverIds.size, 'files');
+    log.debug('[FileSync] Local has', localIds.size, 'files');
     
     // Find missing files (on server but not local)
     const missingIds: string[] = [];
@@ -113,8 +106,8 @@ export async function handleSyncMetadata(files: Array<{id: string, file_name: st
       }
     });
     
-    console.log('[FileSync] Missing:', missingIds.length, 'files');
-    console.log('[FileSync] Orphaned:', orphanedIds.length, 'files');
+    log.debug('[FileSync] Missing:', missingIds.length, 'files');
+    log.debug('[FileSync] Orphaned:', orphanedIds.length, 'files');
     
     // Delete orphaned files
     if (orphanedIds.length > 0) {
@@ -125,12 +118,12 @@ export async function handleSyncMetadata(files: Array<{id: string, file_name: st
     if (missingIds.length > 0) {
       requestSignedUrls(missingIds);
     } else {
-      console.log('[FileSync] ✅ All files up to date, no downloads needed');
+      log.info('[FileSync] All files up to date, no downloads needed');
       isSyncing = false;
     }
     
   } catch (error) {
-    console.error('[FileSync] ❌ Error handling metadata:', error);
+    log.error('[FileSync] Error handling metadata:', error);
     isSyncing = false;
   }
 }
@@ -140,7 +133,7 @@ export async function handleSyncMetadata(files: Array<{id: string, file_name: st
  * Downloads each file to local storage
  */
 export async function handleSignedUrls(files: Array<{id: string, file_name: string, signed_url: string}>): Promise<void> {
-  console.log('[FileSync] 📥 Received signed URLs for', files.length, 'files');
+  log.info('[FileSync] Received signed URLs for', files.length, 'files');
   
   const results = {
     synced: [] as string[],
@@ -150,26 +143,24 @@ export async function handleSignedUrls(files: Array<{id: string, file_name: stri
   // Download each file sequentially
   for (const file of files) {
     try {
-      console.log('[FileSync] ⬇️  Downloading:', file.file_name, `(${file.id})`);
+      log.debug('[FileSync] Downloading:', file.file_name, `(${file.id})`);
       await downloadFile(file.id, file.file_name, file.signed_url);
-      
-      // Add to local IDs and metadata
+
       localIds.add(file.id);
       appendToMetadata(file.id);
       results.synced.push(file.id);
-      
-      console.log('[FileSync] ✅ Downloaded:', file.file_name);
+
+      log.debug('[FileSync] Downloaded:', file.file_name);
     } catch (error) {
-      console.error('[FileSync] ❌ Failed to download', file.file_name, ':', error);
+      log.error('[FileSync] Failed to download', file.file_name, ':', error);
       results.failed.push(file.id);
     }
   }
   
-  console.log('[FileSync] Download summary - Success:', results.synced.length, 'Failed:', results.failed.length);
-  
-  // Mark sync complete
+  log.info('[FileSync] Download summary - Success:', results.synced.length, 'Failed:', results.failed.length);
+
   isSyncing = false;
-  console.log('[FileSync] ✅ File sync complete');
+  log.info('[FileSync] File sync complete');
 }
 
 /**
@@ -193,10 +184,10 @@ export function resolveFilePath(relativePath: string): string | null {
       return fullPath;
     }
     
-    console.warn('[FileSync] File not found:', fullPath);
+    log.warn('[FileSync] File not found:', fullPath);
     return null;
   } catch (error) {
-    console.error('[FileSync] Error resolving file path:', error);
+    log.error('[FileSync] Error resolving file path:', error);
     return null;
   }
 }
@@ -208,13 +199,12 @@ function ensureDirectories(): void {
   // Create files directory if it doesn't exist
   if (!fs.existsSync(FILES_DIR)) {
     fs.mkdirSync(FILES_DIR, { recursive: true });
-    console.log('[FileSync] Created files directory:', FILES_DIR);
+    log.info('[FileSync] Created files directory:', FILES_DIR);
   }
-  
-  // Create metadata file if it doesn't exist
+
   if (!fs.existsSync(METADATA_FILE)) {
     fs.writeFileSync(METADATA_FILE, '', 'utf-8');
-    console.log('[FileSync] Created metadata file:', METADATA_FILE);
+    log.info('[FileSync] Created metadata file:', METADATA_FILE);
   }
 }
 
@@ -231,7 +221,7 @@ function loadLocalIds(): Set<string> {
     
     return new Set(ids);
   } catch (error) {
-    console.error('[FileSync] Error loading metadata:', error);
+    log.error('[FileSync] Error loading metadata:', error);
     return new Set();
   }
 }
@@ -243,7 +233,7 @@ function appendToMetadata(id: string): void {
   try {
     fs.appendFileSync(METADATA_FILE, id + '\n', 'utf-8');
   } catch (error) {
-    console.error('[FileSync] Error appending to metadata:', error);
+    log.error('[FileSync] Error appending to metadata:', error);
   }
 }
 
@@ -255,7 +245,7 @@ function saveMetadata(ids: Set<string>): void {
     const content = Array.from(ids).join('\n') + '\n';
     fs.writeFileSync(METADATA_FILE, content, 'utf-8');
   } catch (error) {
-    console.error('[FileSync] Error saving metadata:', error);
+    log.error('[FileSync] Error saving metadata:', error);
   }
 }
 
@@ -263,7 +253,7 @@ function saveMetadata(ids: Set<string>): void {
  * Delete orphaned files (local but not on server)
  */
 function deleteOrphanedFiles(orphanedIds: string[]): void {
-  console.log('[FileSync] 🗑️  Deleting', orphanedIds.length, 'orphaned files...');
+  log.info('[FileSync] Deleting', orphanedIds.length, 'orphaned files...');
   
   for (const id of orphanedIds) {
     try {
@@ -271,20 +261,20 @@ function deleteOrphanedFiles(orphanedIds: string[]): void {
       
       if (fs.existsSync(filePath)) {
         fs.rmSync(filePath, { recursive: true, force: true });
-        console.log('[FileSync] ✅ Deleted:', id);
+        log.debug('[FileSync] Deleted:', id);
       }
       
       // Remove from local IDs
       localIds.delete(id);
       
     } catch (error) {
-      console.error('[FileSync] ❌ Failed to delete', id, ':', error);
+      log.error('[FileSync] Failed to delete', id, ':', error);
     }
   }
   
   // Save updated metadata
   saveMetadata(localIds);
-  console.log('[FileSync] ✅ Orphaned files deleted');
+  log.info('[FileSync] Orphaned files deleted');
 }
 
 /**
@@ -292,21 +282,21 @@ function deleteOrphanedFiles(orphanedIds: string[]): void {
  */
 function requestSignedUrls(fileIds: string[]): void {
   if (!ws || ws.readyState !== WebSocket.OPEN) {
-    console.error('[FileSync] Cannot request URLs - WebSocket not connected');
+    log.error('[FileSync] Cannot request URLs - WebSocket not connected');
     isSyncing = false;
     return;
   }
-  
-  console.log('[FileSync] 📤 Requesting signed URLs for', fileIds.length, 'files...');
-  
+
+  log.debug('[FileSync] Requesting signed URLs for', fileIds.length, 'files...');
+
   try {
     ws.send(JSON.stringify({
       type: 'request_signed_urls',
       file_ids: fileIds
     }));
-    console.log('[FileSync] ✅ Signed URL request sent');
+    log.debug('[FileSync] Signed URL request sent');
   } catch (error) {
-    console.error('[FileSync] ❌ Failed to request signed URLs:', error);
+    log.error('[FileSync] Failed to request signed URLs:', error);
     isSyncing = false;
   }
 }
@@ -317,8 +307,7 @@ function requestSignedUrls(fileIds: string[]): void {
 function downloadFile(id: string, fileName: string, signedUrl: string): Promise<void> {
   return new Promise((resolve, reject) => {
     try {
-      // Debug: Log the actual URL we're trying to download from
-      console.log('[FileSync] 🔗 Signed URL:', signedUrl);
+      log.debug('[FileSync] Signed URL:', signedUrl);
       
       // Create directory for this file
       const fileDir = path.join(FILES_DIR, id);
@@ -327,7 +316,7 @@ function downloadFile(id: string, fileName: string, signedUrl: string): Promise<
       }
       
       const filePath = path.join(fileDir, fileName);
-      console.log('[FileSync] 💾 Saving file to:', filePath);
+      log.debug('[FileSync] Saving file to:', filePath);
       
       const fileStream = fs.createWriteStream(filePath);
       

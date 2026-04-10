@@ -1,5 +1,11 @@
 import { createClient, SupabaseClient, RealtimeChannel } from '@supabase/supabase-js';
 
+function tokenTag(t: string | null): string {
+  if (!t) return 'NULL';
+  if (t.length <= 16) return t;
+  return `${t.slice(0, 8)}...${t.slice(-6)}`;
+}
+
 let supabase: SupabaseClient | null = null;
 let currentToken: string | null = null;
 let _url: string = '';
@@ -35,6 +41,15 @@ export function getSupabase(): SupabaseClient | null {
 }
 
 export function setSupabaseToken(token: string | null): void {
+  // Idempotency: same token means no state change needed. Prevents client
+  // thrashing and the "Multiple GoTrueClient instances" warning when the
+  // webapp re-pushes the same token on reloads.
+  if (token === currentToken) {
+    console.log(`[Supabase] setSupabaseToken — unchanged (${tokenTag(token)}), skipping`);
+    return;
+  }
+
+  console.log(`[Supabase] setSupabaseToken — changed: ${tokenTag(currentToken)} -> ${tokenTag(token)}`);
   currentToken = token;
 
   if (supabase) {
@@ -61,21 +76,40 @@ export function subscribeUserJobs(
   onInsert: (row: any) => void,
   onUpdate: (row: any) => void,
 ): RealtimeChannel | null {
-  if (!supabase) return null;
+  if (!supabase) {
+    console.warn('[Supabase] subscribeUserJobs — no client');
+    return null;
+  }
+
+  const userTag = userId.slice(0, 8);
+  console.log(`[Supabase] subscribeUserJobs — user: ${userTag}, token: ${tokenTag(currentToken)}`);
 
   return supabase
     .channel('browser-jobs-user')
     .on(
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'browser_jobs', filter: `user_id=eq.${userId}` },
-      (payload) => onInsert(payload.new),
+      (payload) => {
+        console.log(`[Supabase] Realtime INSERT — browser_job ${payload.new?.id?.slice(0, 8) ?? '?'}`);
+        onInsert(payload.new);
+      },
     )
     .on(
       'postgres_changes',
       { event: 'UPDATE', schema: 'public', table: 'browser_jobs', filter: `user_id=eq.${userId}` },
-      (payload) => onUpdate(payload.new),
+      (payload) => {
+        console.log(`[Supabase] Realtime UPDATE — browser_job ${payload.new?.id?.slice(0, 8) ?? '?'}, status: ${payload.new?.status}`);
+        onUpdate(payload.new);
+      },
     )
-    .subscribe();
+    .subscribe((status, err) => {
+      const errMsg = err ? ` — error: ${err.message}` : '';
+      if (status === 'SUBSCRIBED') {
+        console.log(`[Supabase] browser-jobs-user channel: ${status}${errMsg}`);
+      } else {
+        console.warn(`[Supabase] browser-jobs-user channel: ${status}${errMsg}`);
+      }
+    });
 }
 
 // Right panel: events for a specific job
@@ -83,7 +117,13 @@ export function subscribeJobEvents(
   jobId: string,
   onUpdate: (row: any) => void,
 ): RealtimeChannel | null {
-  if (!supabase) return null;
+  if (!supabase) {
+    console.warn('[Supabase] subscribeJobEvents — no client');
+    return null;
+  }
+
+  const jobTag = jobId.slice(0, 8);
+  console.log(`[Supabase] subscribeJobEvents — job: ${jobTag}`);
 
   return supabase
     .channel(`browser-job-${jobId}`)
@@ -92,12 +132,24 @@ export function subscribeJobEvents(
       { event: 'UPDATE', schema: 'public', table: 'browser_jobs', filter: `id=eq.${jobId}` },
       (payload) => onUpdate(payload.new),
     )
-    .subscribe();
+    .subscribe((status, err) => {
+      const errMsg = err ? ` — error: ${err.message}` : '';
+      if (status === 'SUBSCRIBED') {
+        console.log(`[Supabase] browser-job-${jobTag} channel: ${status}${errMsg}`);
+      } else {
+        console.warn(`[Supabase] browser-job-${jobTag} channel: ${status}${errMsg}`);
+      }
+    });
 }
 
 // Initial fetch — enrich with job title/company from jobs table
 export async function fetchUserJobs(userId: string): Promise<any[]> {
-  if (!supabase || !currentToken) return [];
+  if (!supabase || !currentToken) {
+    console.warn(`[Supabase] fetchUserJobs — no client or token (supabase: ${!!supabase}, token: ${!!currentToken})`);
+    return [];
+  }
+
+  console.log(`[Supabase] fetchUserJobs — user: ${userId.slice(0, 8)}, token: ${tokenTag(currentToken)}`);
 
   const { data, error } = await supabase
     .from('browser_jobs')
@@ -107,9 +159,11 @@ export async function fetchUserJobs(userId: string): Promise<any[]> {
     .limit(50);
 
   if (error) {
-    console.error('[Supabase] fetchUserJobs error:', error.message);
+    console.error(`[Supabase] fetchUserJobs ERROR — ${error.message} (code: ${(error as any).code ?? '?'})`);
     return [];
   }
+
+  console.log(`[Supabase] fetchUserJobs — returned ${data?.length ?? 0} rows`);
 
   if (!data || data.length === 0) return [];
 
