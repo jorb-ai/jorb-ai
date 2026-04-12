@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { subscribeAgentJob, getSupabase } from '../lib/supabase';
+import { watchAgentJob } from '../lib/rpc';
 import { StreamingDots } from './StreamingDots';
 import { colors } from '../lib/colors';
 import type { BrowserEvent, AgentJobEvent } from '../types';
@@ -19,21 +19,16 @@ export const TailorThread: React.FC<TailorThreadProps> = ({ event, onClickReview
 
   useEffect(() => {
     if (!agentJobId) return;
-
-    const channel = subscribeAgentJob(agentJobId, (row: any) => {
+    // watchAgentJob fires the callback once with the initial snapshot
+    // and then on every server-broadcast update. The unwatch cleans up
+    // both the client-side callback and the server-side watch entry.
+    const unwatch = watchAgentJob(agentJobId, (row: any) => {
       setStatus(row.status || 'running');
-      if (row.events) {
-        setAgentEvents(row.events);
-      }
-      if (row.is_approved) {
-        setIsApproved(true);
-      }
+      if (row.events) setAgentEvents(row.events);
+      if (row.is_approved) setIsApproved(true);
     });
-
     return () => {
-      if (channel) {
-        getSupabase()?.removeChannel(channel);
-      }
+      unwatch();
     };
   }, [agentJobId]);
 
