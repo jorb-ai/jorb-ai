@@ -92,8 +92,21 @@ function sendFileSyncAck(fileId: string): void {
  * Compares with local files and requests signed URLs for missing ones
  */
 export async function handleSyncMetadata(files: Array<{id: string, file_name: string}>): Promise<void> {
+  // Already-local files: emit an ack immediately, BEFORE the isSyncing
+  // gate. Acks are stateless — the server maps them into
+  // PENDING_FILE_SYNC_ACKS by file_id and silently no-ops on unknown ids
+  // — so sending them is always safe. Hoisting above the gate fixes a
+  // race: if tailor.py fires a second file_sync_trigger while an earlier
+  // sync is still downloading (common when the user re-runs tailor
+  // within a session), the second metadata payload would otherwise hit
+  // the in-progress gate and return, and the newly-uploaded file's ack
+  // would never fire → tailor.py blocks 30s and raises File sync timeout.
+  for (const f of files) {
+    if (localIds.has(f.id)) sendFileSyncAck(f.id);
+  }
+
   if (isSyncing) {
-    log.warn('[FileSync] Sync already in progress, ignoring request');
+    log.warn('[FileSync] Sync already in progress, ignoring download request (already-local acks already sent)');
     return;
   }
 
@@ -104,15 +117,6 @@ export async function handleSyncMetadata(files: Array<{id: string, file_name: st
     const serverIds = new Set(files.map(f => f.id));
     log.debug('[FileSync] Server has', serverIds.size, 'files');
     log.debug('[FileSync] Local has', localIds.size, 'files');
-
-    // Already-local files: emit an ack immediately. Covers the re-tailor
-    // edge case (Spec 4.8) — if the same file_id is synced twice (e.g.
-    // user re-runs tailor without restarting Electron) it won't appear in
-    // the missing set, no signed_urls response fires, and without this
-    // ack tailor.py would block 30s and raise File sync timeout.
-    for (const f of files) {
-      if (localIds.has(f.id)) sendFileSyncAck(f.id);
-    }
 
     // Find missing files (on server but not local)
     const missingIds: string[] = [];
