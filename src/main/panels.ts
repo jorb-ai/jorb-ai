@@ -1,8 +1,7 @@
 import { BrowserView, BrowserWindow, session as electronSession } from 'electron';
 import * as path from 'path';
-import log, { tokenPrefix } from './logger';
+import log from './logger';
 import { getConfigValue } from './config';
-import { handleAuthToken } from './auth';
 
 const MAX_SESSIONS = 5;
 const NAVIGATE_TIMEOUT_MS = 30_000;
@@ -52,33 +51,12 @@ function makeView(preloadName: string): BrowserView {
   // Prevent CDP throttling on hidden views
   view.webContents.setBackgroundThrottling(false);
 
-  // Proactively extract Supabase JWT from the BrowserView's localStorage
-  // after page load. This is the primary auth mechanism — it eliminates
-  // all race conditions with the web app's onAuthStateChange timing.
-  // The web app's sendAuthTokenToElectron still fires on token refresh
-  // as a secondary mechanism.
-  view.webContents.on('did-finish-load', () => {
-    const url = view.webContents.getURL();
-    view.webContents.executeJavaScript(`
-      (() => {
-        try {
-          const key = Object.keys(localStorage).find(k => k.startsWith('sb-') && k.endsWith('-auth-token'));
-          if (!key) return null;
-          const data = JSON.parse(localStorage.getItem(key));
-          return data?.access_token || null;
-        } catch { return null; }
-      })()
-    `).then((token) => {
-      if (token) {
-        log.info(`[Panels] did-finish-load — url: ${url}, extracted token: ${tokenPrefix(token)}`);
-        handleAuthToken(token);
-      } else {
-        log.debug(`[Panels] did-finish-load — url: ${url}, no supabase token in localStorage`);
-      }
-    }).catch((err) => {
-      log.warn(`[Panels] did-finish-load — url: ${url}, localStorage read failed: ${err?.message ?? err}`);
-    });
-  });
+  // Auth is push-only (Phase 4 R20 update): the webapp calls
+  // window.finbro.sendAuthToken on SIGNED_IN / TOKEN_REFRESHED /
+  // visibilitychange-driven refreshes, exposed by preload-webview.ts.
+  // No proactive localStorage read — that was reading 23-hour-stale
+  // tokens on every BrowserView load and causing "Invalid token" WS
+  // registration failures on every startup.
 
   view.webContents.on('did-navigate', (_event, url) => {
     log.debug(`[Panels] did-navigate — ${url}`);
