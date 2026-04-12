@@ -73,6 +73,21 @@ export function requestFileSync(): void {
 }
 
 /**
+ * Send a file_sync_ack for a specific file_id. Spec 4.8 — unblocks
+ * tailor.py's generate_and_sync_pdf wait_for. Safe to call for any
+ * file_id; the server silently ignores acks with no pending event.
+ */
+function sendFileSyncAck(fileId: string): void {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    try {
+      ws.send(JSON.stringify({ type: 'file_sync_ack', file_id: fileId }));
+    } catch (err) {
+      log.warn('[FileSync] Failed to send file_sync_ack:', err);
+    }
+  }
+}
+
+/**
  * Handle file metadata from server
  * Compares with local files and requests signed URLs for missing ones
  */
@@ -89,7 +104,16 @@ export async function handleSyncMetadata(files: Array<{id: string, file_name: st
     const serverIds = new Set(files.map(f => f.id));
     log.debug('[FileSync] Server has', serverIds.size, 'files');
     log.debug('[FileSync] Local has', localIds.size, 'files');
-    
+
+    // Already-local files: emit an ack immediately. Covers the re-tailor
+    // edge case (Spec 4.8) — if the same file_id is synced twice (e.g.
+    // user re-runs tailor without restarting Electron) it won't appear in
+    // the missing set, no signed_urls response fires, and without this
+    // ack tailor.py would block 30s and raise File sync timeout.
+    for (const f of files) {
+      if (localIds.has(f.id)) sendFileSyncAck(f.id);
+    }
+
     // Find missing files (on server but not local)
     const missingIds: string[] = [];
     serverIds.forEach(id => {
@@ -97,7 +121,7 @@ export async function handleSyncMetadata(files: Array<{id: string, file_name: st
         missingIds.push(id);
       }
     });
-    
+
     // Find orphaned files (local but not on server)
     const orphanedIds: string[] = [];
     localIds.forEach(id => {
@@ -105,15 +129,15 @@ export async function handleSyncMetadata(files: Array<{id: string, file_name: st
         orphanedIds.push(id);
       }
     });
-    
+
     log.debug('[FileSync] Missing:', missingIds.length, 'files');
     log.debug('[FileSync] Orphaned:', orphanedIds.length, 'files');
-    
+
     // Delete orphaned files
     if (orphanedIds.length > 0) {
       deleteOrphanedFiles(orphanedIds);
     }
-    
+
     // Request signed URLs for missing files
     if (missingIds.length > 0) {
       requestSignedUrls(missingIds);
@@ -121,7 +145,7 @@ export async function handleSyncMetadata(files: Array<{id: string, file_name: st
       log.info('[FileSync] All files up to date, no downloads needed');
       isSyncing = false;
     }
-    
+
   } catch (error) {
     log.error('[FileSync] Error handling metadata:', error);
     isSyncing = false;
@@ -149,11 +173,16 @@ export async function handleSignedUrls(files: Array<{id: string, file_name: stri
       localIds.add(file.id);
       appendToMetadata(file.id);
       results.synced.push(file.id);
+      // Spec 4.8: ack per successful download so tailor.py unblocks.
+      sendFileSyncAck(file.id);
 
       log.debug('[FileSync] Downloaded:', file.file_name);
     } catch (error) {
       log.error('[FileSync] Failed to download', file.file_name, ':', error);
       results.failed.push(file.id);
+      // Do NOT ack on failure — let tailor.py time out and surface
+      // "File sync timeout" rather than return a path to a missing
+      // file that upload_file will silently fail on.
     }
   }
   
