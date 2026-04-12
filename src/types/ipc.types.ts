@@ -17,7 +17,6 @@ export enum IpcChannel {
 
   // Browser panel (legacy — kept for web app nav)
   PANEL_NAVIGATE = 'panel:navigate',
-  PANEL_GET_TAB_ID = 'panel:get-tab-id',
   PANEL_RESIZE = 'panel:resize',
 
   // Browser automation

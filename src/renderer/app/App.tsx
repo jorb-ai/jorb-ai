@@ -150,7 +150,6 @@ export const App: React.FC = () => {
       unsubscribe = subscribeBrowserJobs(
         (newRow) => {
           if (!mounted) return;
-          console.log(`[App] WS INSERT — browser_job ${newRow.id?.slice(0, 8)}`);
           setSessions((prev) => {
             if (prev.some((r) => r.id === newRow.id)) return prev;
             return [newRow, ...prev];

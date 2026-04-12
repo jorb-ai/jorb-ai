@@ -24,7 +24,7 @@ const pending = new Map<string, PendingEntry>();
 const jobInsertCallbacks = new Set<(row: BrowserJobRow) => void>();
 const jobUpdateCallbacks = new Set<(row: BrowserJobRow) => void>();
 // Keyed by agent_job_id → set of per-component update callbacks
-const agentJobCallbacks = new Map<string, Set<(row: unknown) => void>>();
+const agentJobCallbacks = new Map<string, Set<(row: any) => void>>();
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
 
@@ -128,25 +128,6 @@ export function subscribeBrowserJobs(
     jobInsertCallbacks.delete(onInsert);
     jobUpdateCallbacks.delete(onUpdate);
   };
-}
-
-export async function getAgentJob(agentJobId: string): Promise<any | null> {
-  try {
-    // The server replies to watch_agent_job with {type: "agent_job", id, row}.
-    // We reuse it as a one-shot fetch because the initial snapshot is
-    // identical — saves a second WS message type. Callers that only
-    // want a snapshot should call unwatchAgentJob shortly after; for
-    // live-subscription, use watchAgentJob instead.
-    const response = await sendRequest<{ row: any }>({
-      type: 'watch_agent_job',
-      agent_job_id: agentJobId,
-    });
-    return response.row || null;
-  } catch (err) {
-    // Ownership rejection or timeout → null. Callers treat "not found"
-    // and "not authorized" as indistinguishable, which is correct.
-    return null;
-  }
 }
 
 export function watchAgentJob(
