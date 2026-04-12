@@ -2,22 +2,9 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { SessionList } from '../panels/session-list/SessionList';
 import { ActionBar } from '../panels/action-bar/ActionBar';
 import { ChatFeed } from '../panels/chat-feed/ChatFeed';
-import {
-  initSupabase,
-  setSupabaseToken,
-  subscribeUserJobs,
-  subscribeJobEvents,
-  fetchUserJobs,
-  enrichBrowserJob,
-  getSupabase,
-} from '../lib/supabase';
-import type { BrowserJobRow, BrowserEvent } from '../types';
+import { listBrowserJobs, subscribeBrowserJobs } from '../lib/rpc';
+import type { BrowserJobRow } from '../types';
 import { deriveDisplayStatus } from '../types';
-
-initSupabase(
-  'https://optsvxrgzocfuyyrbkqd.supabase.co',
-  'sb_publishable_bJw9zTxyqsiE83gw8kV6Cw_tXyCXGLc',
-);
 
 const RIGHT_MIN = 200;
 const RIGHT_MAX = 480;
@@ -27,16 +14,10 @@ const DESTROY_GRACE_MS = 30_000;
 export const App: React.FC = () => {
   const [sessions, setSessions] = useState<BrowserJobRow[]>([]);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
-  const [events, setEvents] = useState<BrowserEvent[]>([]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
-  // authToken is tracked as state purely to drive the fetch useEffect to re-run
-  // when the webapp pushes a refreshed token after the initial stale read.
-  const [authToken, setAuthToken] = useState<string | null>(null);
   const [rightWidth, setRightWidth] = useState(RIGHT_DEFAULT);
 
-  const sessionsRef = useRef(sessions);
-  sessionsRef.current = sessions;
   const graceTimers = useRef<Map<string, NodeJS.Timeout>>(new Map());
 
   // ── Grace timer: destroy BrowserView 30s after terminal status ──────
@@ -105,12 +86,14 @@ export const App: React.FC = () => {
   }, []);
 
   // ── Auth ─────────────────────────────────────────────────────────
+  // We only need to know WHO is logged in (for the fetch effect guard) and
+  // WHETHER they're logged in. The JWT itself lives in the main process and
+  // drives WS registration there — the renderer never holds it directly
+  // post-Phase-4.
   useEffect(() => {
     const cleanup = window.Finbro.auth.onTokenChanged((token) => {
       const prefix = token ? `${token.slice(0, 8)}...${token.slice(-6)}` : 'NULL';
       console.log(`[App] onTokenChanged — token: ${prefix}`);
-      setSupabaseToken(token);
-      setAuthToken(token);
       setIsAuthenticated(!!token);
 
       if (token) {
@@ -130,12 +113,10 @@ export const App: React.FC = () => {
           setUserId(null);
         }
       } else {
-        console.warn('[App] LOGOUT — clearing sessions, activeJobId, events, grace timers');
+        console.warn('[App] LOGOUT — clearing sessions, activeJobId, grace timers');
         setUserId(null);
         setSessions([]);
         setActiveJobId(null);
-        setEvents([]);
-        // C5 fix: clear all grace timers on logout
         for (const timer of graceTimers.current.values()) clearTimeout(timer);
         graceTimers.current.clear();
       }
@@ -143,84 +124,60 @@ export const App: React.FC = () => {
     return cleanup;
   }, []);
 
-  // ── Fetch + Realtime subscription for sessions ───────────────────
-  // authToken is included in the dep array so that if the webapp pushes a
-  // refreshed token after the initial (possibly stale) token, we re-fetch
-  // against the fresh client instead of leaving the sidebar frozen on the
-  // empty result from the stale-token fetch.
+  // ── Fetch + live updates via WS pubsub (Phase 4) ─────────────────
+  // The server does the batch-enrichment (title/company from the jobs
+  // table) and pushes full rows on INSERT/UPDATE. We dedupe on id and
+  // merge on id — no need to preserve title/company across updates
+  // because the server already includes them.
+  //
+  // The `unsubscribe` handle is hoisted OUT of the IIFE so the outer
+  // cleanup can await it. A `return` from inside an async IIFE is
+  // consumed by the IIFE caller, not the useEffect cleanup — the exact
+  // class of leak that got us into Phase 4.
   useEffect(() => {
-    if (!isAuthenticated || !userId || !authToken) return;
+    if (!isAuthenticated || !userId) return;
+    console.log(`[App] Fetch effect running — user: ${userId.slice(0, 8)}`);
 
-    console.log(`[App] Fetch effect running — user: ${userId.slice(0, 8)}, token: ${authToken.slice(0, 8)}...${authToken.slice(-6)}`);
-
-    let userChannel: any = null;
     let mounted = true;
+    let unsubscribe: (() => void) | null = null;
 
     (async () => {
-      const jobs = await fetchUserJobs(userId);
+      const jobs = await listBrowserJobs();
       if (!mounted) return;
       console.log(`[App] Fetch effect — setSessions with ${jobs.length} rows`);
-      setSessions(jobs as BrowserJobRow[]);
+      setSessions(jobs);
 
-      userChannel = subscribeUserJobs(
-        userId,
-        async (newRow: any) => {
+      unsubscribe = subscribeBrowserJobs(
+        (newRow) => {
           if (!mounted) return;
-          console.log(`[App] Realtime INSERT — browser_job ${newRow.id?.slice(0, 8)}`);
-          try {
-            const enriched = await enrichBrowserJob(newRow);
-            if (!mounted) return;
-            setSessions((prev) => [enriched as BrowserJobRow, ...prev]);
-          } catch {
-            setSessions((prev) => [newRow as BrowserJobRow, ...prev]);
-          }
-          // Phase 3: do NOT auto-focus new jobs — user stays on current session
+          console.log(`[App] WS INSERT — browser_job ${newRow.id?.slice(0, 8)}`);
+          setSessions((prev) => {
+            if (prev.some((r) => r.id === newRow.id)) return prev;
+            return [newRow, ...prev];
+          });
         },
-        (updatedRow: any) => {
+        (updatedRow) => {
           if (!mounted) return;
           setSessions((prev) =>
-            prev.map((s) =>
-              s.id === updatedRow.id ? { ...s, ...updatedRow, title: s.title, company: s.company } : s,
-            ),
+            prev.map((s) => (s.id === updatedRow.id ? { ...s, ...updatedRow } : s)),
           );
         },
       );
-      console.log(`[App] Subscribed to browser_jobs channel for user ${userId.slice(0, 8)}`);
+
+      // Race: the effect may have been torn down between the fetch and
+      // the subscribe. If so, call unsubscribe immediately — the outer
+      // cleanup already fired with unsubscribe === null.
+      if (!mounted && unsubscribe) {
+        unsubscribe();
+        unsubscribe = null;
+      }
     })();
 
     return () => {
       mounted = false;
-      if (userChannel) {
-        getSupabase()?.removeChannel(userChannel);
-      }
+      unsubscribe?.();
     };
-  }, [isAuthenticated, userId, authToken]);
-
-  // ── Job events subscription ──────────────────────────────────────
-  useEffect(() => {
-    if (!activeJobId) {
-      setEvents([]);
-      return;
-    }
-
-    const job = sessionsRef.current.find((s) => s.id === activeJobId);
-    setEvents(job?.events || []);
-
-    const channel = subscribeJobEvents(activeJobId, (updatedRow: any) => {
-      setEvents(updatedRow.events || []);
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.id === updatedRow.id ? { ...s, ...updatedRow, title: s.title, company: s.company } : s,
-        ),
-      );
-    });
-
-    return () => {
-      if (channel) {
-        getSupabase()?.removeChannel(channel);
-      }
-    };
-  }, [activeJobId]);
+  }, [isAuthenticated, userId]);
 
   // ── Handlers ─────────────────────────────────────────────────────
   const handleSelectSession = useCallback(async (jobId: string) => {
@@ -244,6 +201,9 @@ export const App: React.FC = () => {
   }, []);
 
   const activeJob = sessions.find((s) => s.id === activeJobId) || null;
+  // Events come directly off the active row — browser_job_updated broadcasts
+  // include the full events array, so no separate subscription is needed.
+  const events = activeJob?.events || [];
 
   // Compute needs_attention count for badge
   const needsAttentionCount = sessions.filter(
