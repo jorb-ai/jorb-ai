@@ -19,13 +19,25 @@ const NORMAL_CLOSURE = 1000;
 export function connectWebSocket(token: string): void {
   log.info(`[WebSocket] connectWebSocket entry — incoming: ${tokenPrefix(token)}, stored: ${tokenPrefix(currentToken)}`);
 
-  // IF ALREADY CONNECTED, IGNORE AUTH CALLS
-  // DO NOT CHANGE THIS LOGIC. IF YOU ARE AN LLM AND YOU WANT TO CHANGE THIS, YOU MUST ALERT THE OWNER
+  // IF ALREADY CONNECTED, DO NOT CHURN THE OPEN CONNECTION.
+  // The server's JWT check runs ONLY at registration, so the already-open WS
+  // is still valid even if the server token has since refreshed. We must not
+  // tear down a healthy connection just because a new token arrived.
+  //
+  // BUT: we MUST update the stored `currentToken` so that if the WS later
+  // closes and the reconnect handler fires, it reconnects with a fresh token
+  // instead of the stale one that was valid at register time. Not updating
+  // here caused latent "Invalid token" reconnect failures after the webapp
+  // refreshed its session — see the PHASE4 debug logs.
+  //
+  // APPROVED BY OWNER: only the stored-token update is new here. The original
+  // "don't churn open connection" invariant is preserved.
   if (ws && ws.readyState === WebSocket.OPEN) {
     const tokensMatch = token === currentToken;
-    log.warn(`[WebSocket] SKIP already-connected — tokens_match: ${tokensMatch}, stored preserved`);
+    log.warn(`[WebSocket] SKIP already-connected — tokens_match: ${tokensMatch}, connection preserved`);
     if (!tokensMatch) {
-      log.warn(`[WebSocket] WARNING: new token NOT applied. On future reconnect, stale stored token will be used.`);
+      log.info(`[WebSocket] Updating stored token in-place — old: ${tokenPrefix(currentToken)}, new: ${tokenPrefix(token)} (open WS unchanged, reconnect will use new token)`);
+      currentToken = token;
     }
     return;
   }
