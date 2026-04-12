@@ -4,6 +4,7 @@ import { createMainWindow } from './windows';
 import { registerIpcHandlers } from './ipc';
 import { initFileSync } from './file-sync';
 import { getConfigPath } from './config';
+import { registerRpcHandlers } from './rpc-bridge';
 
 log.info('jorb.ai starting — Electron:', process.versions.electron, '| Chrome:', process.versions.chrome);
 
@@ -13,7 +14,8 @@ app.whenReady().then(async () => {
 
   await initFileSync();
   registerIpcHandlers();
-  await createMainWindow();
+  const mainWindow = await createMainWindow();
+  registerRpcHandlers(mainWindow);
 
   log.info('[Main] Initialization complete');
 

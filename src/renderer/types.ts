@@ -66,6 +66,12 @@ declare global {
         destroy: (sessionId: string) => Promise<void>;
         status: () => Promise<{ count: number; atCapacity: boolean }>;
       };
+      rpc: {
+        request: (msg: unknown) => Promise<void>;
+        subscribe: () => Promise<void>;
+        unsubscribe: () => Promise<void>;
+        onEvent: (callback: (event: unknown) => void) => () => void;
+      };
     };
     finbro?: {
       sendAuthToken: (token: string | null) => void;

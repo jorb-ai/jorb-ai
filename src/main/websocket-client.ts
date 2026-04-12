@@ -16,6 +16,28 @@ let reconnectTimeout: NodeJS.Timeout | null = null;
 const RECONNECT_DELAY = 5000;
 const NORMAL_CLOSURE = 1000;
 
+// ── RPC bridge hooks (Spec 4.3) ──────────────────────────────────────
+// The renderer's rpc.ts module owns its own request/response correlation
+// but does not hold the WS directly — the main process does. These two
+// exports give rpc-bridge.ts the minimum surface it needs.
+
+type ServerMessageListener = (msg: unknown) => void;
+const serverMessageListeners: Set<ServerMessageListener> = new Set();
+
+export function sendWsMessage(msg: unknown): void {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(msg));
+  } else {
+    const t = (msg as { type?: string } | null)?.type ?? '<unknown>';
+    log.warn(`[WebSocket] sendWsMessage — WS not open, message dropped: ${t}`);
+  }
+}
+
+export function onWsServerMessage(listener: ServerMessageListener): () => void {
+  serverMessageListeners.add(listener);
+  return () => { serverMessageListeners.delete(listener); };
+}
+
 export function connectWebSocket(token: string): void {
   log.info(`[WebSocket] connectWebSocket entry — incoming: ${tokenPrefix(token)}, stored: ${tokenPrefix(currentToken)}`);
 
@@ -83,6 +105,19 @@ export function connectWebSocket(token: string): void {
 }
 
 function handleServerMessage(message: any): void {
+  // Fan out to RPC listeners BEFORE the existing dispatch. Listeners only
+  // care about data-plane messages (browser_jobs_list, agent_job,
+  // *_inserted / *_updated, subscribed, error-correlated-to-an-id); the
+  // main-process dispatch below handles CDP/navigate/file-sync/panel-
+  // switch. Each side ignores the messages it does not own.
+  for (const listener of serverMessageListeners) {
+    try {
+      listener(message);
+    } catch (e) {
+      log.error('[WebSocket] RPC listener error:', e);
+    }
+  }
+
   // Registration confirmation
   if (message.type === 'registered') {
     log.info(`[WebSocket] Registered — user: ${message.user_id}`);

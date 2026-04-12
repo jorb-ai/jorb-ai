@@ -12,6 +12,10 @@ const IpcChannel = {
   SESSION_SHOW_TAILOR: 'session:show-tailor',
   SESSION_DESTROY: 'session:destroy',
   SESSION_STATUS: 'session:status',
+  RPC_REQUEST: 'rpc:request',
+  RPC_SUBSCRIBE: 'rpc:subscribe',
+  RPC_UNSUBSCRIBE: 'rpc:unsubscribe',
+  RPC_EVENT: 'rpc:event',
 } as const;
 
 const finbroApi = {
@@ -58,6 +62,18 @@ const finbroApi = {
     },
     status: async () => {
       return ipcRenderer.invoke(IpcChannel.SESSION_STATUS);
+    },
+  },
+
+  // Spec 4.3 — WS-backed RPC surface used by renderer/lib/rpc.ts
+  rpc: {
+    request: async (msg: unknown) => ipcRenderer.invoke(IpcChannel.RPC_REQUEST, msg),
+    subscribe: async () => ipcRenderer.invoke(IpcChannel.RPC_SUBSCRIBE),
+    unsubscribe: async () => ipcRenderer.invoke(IpcChannel.RPC_UNSUBSCRIBE),
+    onEvent: (callback: (event: unknown) => void): (() => void) => {
+      const handler = (_e: unknown, event: unknown) => callback(event);
+      ipcRenderer.on(IpcChannel.RPC_EVENT, handler);
+      return () => { ipcRenderer.removeListener(IpcChannel.RPC_EVENT, handler); };
     },
   },
 };

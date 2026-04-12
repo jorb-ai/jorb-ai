@@ -22,6 +22,12 @@ export enum IpcChannel {
 
   // Browser automation
   BROWSER_STOP = 'browser:stop',
+
+  // Spec 4.3 — WS-backed RPC surface
+  RPC_REQUEST = 'rpc:request',
+  RPC_SUBSCRIBE = 'rpc:subscribe',
+  RPC_UNSUBSCRIBE = 'rpc:unsubscribe',
+  RPC_EVENT = 'rpc:event',
 }
 
 // Configuration
