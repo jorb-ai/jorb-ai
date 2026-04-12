@@ -1,5 +1,11 @@
 # Desktop App — CLAUDE.md
 
+## Branch Policy
+
+Work on `main` only. No feature branches. Commits land directly on `main`
+with clear per-change messages and are pushed immediately. See the
+org-wide rule in `jorb.ai/CLAUDE.md`.
+
 ## What This Is
 
 Electron desktop app that automates job applications via Chrome DevTools Protocol (CDP). The app is a **dumb terminal** — all intelligence lives in the API (`web-api/`). The app executes CDP commands, renders the browser, and streams activity from Supabase Realtime.
