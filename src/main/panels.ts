@@ -119,6 +119,14 @@ function teardownView(view: BrowserView): void {
 export function init(window: BrowserWindow, bounds: PanelBounds): void {
   parentWindow = window;
   currentBounds = bounds;
+  // Electron adds an internal 'closed' listener per attached BrowserView.
+  // With MAX_SESSIONS=5 and up to 2 views each (A + B tailor) plus the
+  // __webapp__ view, we can reach 10+ listeners on the parent window.
+  // The default limit of 10 triggers a benign but noisy warning —
+  // observed at 18:57:44 in the Phase 4 spike logs. Bump to a safe
+  // ceiling. Revisit if a future Electron version changes the internal
+  // listener accounting.
+  window.setMaxListeners(30);
 }
 
 export function createSession(sessionId: string): boolean {
