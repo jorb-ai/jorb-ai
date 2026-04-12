@@ -4,7 +4,7 @@ import { createMainWindow } from './windows';
 import { registerIpcHandlers } from './ipc';
 import { initFileSync } from './file-sync';
 import { getConfigPath } from './config';
-import { registerRpcHandlers } from './rpc-bridge';
+import { registerRpcHandlers, setMainWindow } from './rpc-bridge';
 
 log.info('jorb.ai starting — Electron:', process.versions.electron, '| Chrome:', process.versions.chrome);
 
@@ -19,9 +19,13 @@ app.whenReady().then(async () => {
 
   log.info('[Main] Initialization complete');
 
-  app.on('activate', () => {
+  app.on('activate', async () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createMainWindow();
+      const reopened = await createMainWindow();
+      // rpc-bridge's server-message forwarder captures the window
+      // reference. Without this swap, the forwarder would keep trying
+      // to send into the old (destroyed) window forever.
+      setMainWindow(reopened);
     }
   });
 });
