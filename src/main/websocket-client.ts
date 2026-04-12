@@ -24,12 +24,32 @@ const NORMAL_CLOSURE = 1000;
 type ServerMessageListener = (msg: unknown) => void;
 const serverMessageListeners: Set<ServerMessageListener> = new Set();
 
+// Messages sent before the WS is open get queued here and flushed after
+// register in the 'open' handler. Without this, a renderer-initiated
+// request (list_browser_jobs, subscribe, ...) that fires in the narrow
+// window between ipc handler registration and the WS handshake completing
+// was silently dropped — user-visible as a ~10s sidebar populate delay
+// on every cold start while rpc.ts's request timeout ran out.
+const sendQueue: unknown[] = [];
+
+// Whether the renderer has requested a live pubsub subscription. Kept on
+// the main side so that after any reconnect (WS died mid-session, token
+// refresh that triggered teardown), we automatically re-send `subscribe`
+// without requiring the renderer to notice the WS lifecycle. The server
+// forgets subscriptions on disconnect, so without this the renderer
+// silently stops receiving browser_job_inserted/updated after any blip.
+let hasSubscribed = false;
+
 export function sendWsMessage(msg: unknown): void {
+  const t = (msg as { type?: string } | null)?.type;
+  if (t === 'subscribe') hasSubscribed = true;
+  else if (t === 'unsubscribe') hasSubscribed = false;
+
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(msg));
   } else {
-    const t = (msg as { type?: string } | null)?.type ?? '<unknown>';
-    log.warn(`[WebSocket] sendWsMessage — WS not open, message dropped: ${t}`);
+    log.debug(`[WebSocket] sendWsMessage — WS not open, queuing: ${t ?? '<unknown>'}`);
+    sendQueue.push(msg);
   }
 }
 
@@ -75,6 +95,32 @@ export function connectWebSocket(token: string): void {
       log.info(`[WebSocket] Connection open — sending register, token: ${tokenPrefix(currentToken)}`);
       ws!.send(JSON.stringify({ type: 'register', token: currentToken }));
       FileSync.setWebSocket(ws!);
+
+      // Flush anything queued before the handshake completed. Register
+      // goes first so the server processes these against a registered
+      // session; WS ordering is FIFO on a single connection.
+      let flushed = 0;
+      while (sendQueue.length > 0) {
+        const queued = sendQueue.shift();
+        try {
+          ws!.send(JSON.stringify(queued));
+          flushed++;
+        } catch (e) {
+          log.warn('[WebSocket] flush failed:', e);
+        }
+      }
+      if (flushed > 0) {
+        log.info(`[WebSocket] Flushed ${flushed} queued message(s) after open`);
+      }
+
+      // Auto-resubscribe on every open if the renderer has ever asked
+      // for a subscription. Handles the reconnect case — server forgets
+      // subscriptions on disconnect. Idempotent on the server side (the
+      // subscribe handler just re-adds this WS to the user's set).
+      if (hasSubscribed) {
+        log.info('[WebSocket] Auto-resubscribing (renderer previously requested)');
+        ws!.send(JSON.stringify({ type: 'subscribe' }));
+      }
     });
 
     ws.on('message', (data: WebSocket.Data) => {
@@ -88,6 +134,14 @@ export function connectWebSocket(token: string): void {
     ws.on('close', (code: number, reason: Buffer) => {
       const reasonStr = reason?.toString() || '<empty>';
       log.warn(`[WebSocket] Closed — code: ${code}, reason: "${reasonStr}", stored token: ${tokenPrefix(currentToken)}`);
+      // Drop anything that was queued for the dead connection. The
+      // renderer's rpc.ts owns the 10s request timeout; any pending
+      // correlated response will surface as a rejection there.
+      // Subscriptions survive via hasSubscribed + auto-resubscribe.
+      if (sendQueue.length > 0) {
+        log.info(`[WebSocket] Dropping ${sendQueue.length} queued message(s) on close`);
+        sendQueue.length = 0;
+      }
       if (currentToken && code !== NORMAL_CLOSURE) {
         log.info(`[WebSocket] Scheduling reconnect in ${RECONNECT_DELAY}ms with stored token`);
         reconnectTimeout = setTimeout(() => {
@@ -291,6 +345,9 @@ export function disconnectWebSocket(): void {
   if (!ws) return;
   log.info('[WebSocket] Closing — reason: User logged out');
   currentToken = null;
+  // Hard reset queue + subscription state so the next login starts clean.
+  sendQueue.length = 0;
+  hasSubscribed = false;
   ws.close(NORMAL_CLOSURE, 'User logged out');
   ws = null;
 }
