@@ -8,7 +8,7 @@ interface SessionListProps {
   sessions: BrowserJobRow[];
   activeJobId: string | null;
   onSelect: (jobId: string) => void;
-  onNavigate: (url: string) => void;
+  onNavigate: (url: string, sessionId?: string) => void;
   needsAttentionCount: number;
 }
 
@@ -30,14 +30,14 @@ export const SessionList: React.FC<SessionListProps> = ({
   return (
     <div className="sidebar">
       {/* Logo */}
-      <div className="sidebar__brand" onClick={() => onNavigate('http://localhost:3000')}>
+      <div className="sidebar__brand" onClick={() => onNavigate('http://localhost:3000', '__webapp__')}>
         <img src={logoWordmark} alt="Jorb" className="sidebar__wordmark" />
       </div>
 
       {/* Dashboard */}
       <div className="sidebar__section">
         <div className="sidebar__header">Dashboard</div>
-        <div className="sidebar__nav-item" onClick={() => onNavigate('http://localhost:3000')}>
+        <div className="sidebar__nav-item" onClick={() => onNavigate('http://localhost:3000', '__webapp__')}>
           Jorb AI Web App
         </div>
       </div>
@@ -45,10 +45,10 @@ export const SessionList: React.FC<SessionListProps> = ({
       {/* Emails */}
       <div className="sidebar__section">
         <div className="sidebar__header">Emails</div>
-        <div className="sidebar__nav-item" onClick={() => onNavigate('https://mail.google.com')}>
+        <div className="sidebar__nav-item" onClick={() => onNavigate('https://mail.google.com', '__gmail__')}>
           Gmail
         </div>
-        <div className="sidebar__nav-item" onClick={() => onNavigate('https://outlook.live.com')}>
+        <div className="sidebar__nav-item" onClick={() => onNavigate('https://outlook.live.com', '__outlook__')}>
           Outlook
         </div>
       </div>

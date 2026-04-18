@@ -57,7 +57,7 @@ declare global {
         stop: (jobId: string) => Promise<void>;
       };
       panel: {
-        navigate: (url: string) => Promise<void>;
+        navigate: (url: string, sessionId?: string) => Promise<void>;
         resize: (width: number) => Promise<void>;
       };
       session: {

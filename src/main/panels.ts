@@ -3,9 +3,20 @@ import * as path from 'path';
 import log from './logger';
 import { getConfigValue } from './config';
 
-const MAX_SESSIONS = 5;
+// Cap for live browser-agent job sessions (one viewA per in-flight
+// browser_jobs row, plus optional viewB for tailor). Must match
+// `MAX_CONCURRENT_BROWSER_JOBS` on the `web-api` side — see
+// `workstreams/browser/CONTRACTS.md` C9. System sessions (ids prefixed
+// with `__`, e.g. `__webapp__`, `__gmail__`, `__outlook__`) are
+// long-lived ambient shells for sidebar nav and are EXCLUDED from this
+// cap so adding a new sidebar item can never shrink the job budget.
+const MAX_BROWSER_JOB_SESSIONS = 5;
 const NAVIGATE_TIMEOUT_MS = 30_000;
 const PORTAL_PARTITION = 'persist:portal';
+
+function isSystemSessionId(id: string): boolean {
+  return id.startsWith('__');
+}
 
 let portalSession: Electron.Session | null = null;
 
@@ -120,12 +131,12 @@ export function init(window: BrowserWindow, bounds: PanelBounds): void {
   parentWindow = window;
   currentBounds = bounds;
   // Electron adds an internal 'closed' listener per attached BrowserView.
-  // With MAX_SESSIONS=5 and up to 2 views each (A + B tailor) plus the
-  // __webapp__ view, we can reach 10+ listeners on the parent window.
-  // The default limit of 10 triggers a benign but noisy warning —
-  // observed at 18:57:44 in the Phase 4 spike logs. Bump to a safe
-  // ceiling. Revisit if a future Electron version changes the internal
-  // listener accounting.
+  // With `MAX_BROWSER_JOB_SESSIONS = 5` (up to 2 views each: A + B
+  // tailor) plus the system views (`__webapp__`, `__gmail__`,
+  // `__outlook__`), steady-state can reach 13+ listeners on the parent
+  // window. The default limit of 10 triggers a benign but noisy warning.
+  // Bump to a safe ceiling. Revisit if a future Electron version changes
+  // the internal listener accounting.
   window.setMaxListeners(30);
 }
 
@@ -134,8 +145,8 @@ export function createSession(sessionId: string): boolean {
     log.debug(`[Panels] createSession(${sessionId.slice(0, 8)}) — already exists`);
     return true;
   }
-  if (sessions.size >= MAX_SESSIONS) {
-    log.warn(`[Panels] createSession(${sessionId.slice(0, 8)}) — CAP REACHED (${sessions.size}/${MAX_SESSIONS})`);
+  if (!isSystemSessionId(sessionId) && countJobSessions() >= MAX_BROWSER_JOB_SESSIONS) {
+    log.warn(`[Panels] createSession(${sessionId.slice(0, 8)}) — CAP REACHED (${countJobSessions()}/${MAX_BROWSER_JOB_SESSIONS} job sessions)`);
     return false;
   }
   if (!parentWindow) {
@@ -148,8 +159,16 @@ export function createSession(sessionId: string): boolean {
   applyBounds(viewA);
 
   sessions.set(sessionId, { viewA, viewB: null, tabId: null });
-  log.info(`[Panels] createSession(${sessionId.slice(0, 8)}) — created | total=${sessions.size}/${MAX_SESSIONS}`);
+  log.info(`[Panels] createSession(${sessionId.slice(0, 8)}) — created | total=${sessions.size} | jobs=${countJobSessions()}/${MAX_BROWSER_JOB_SESSIONS}`);
   return true;
+}
+
+function countJobSessions(): number {
+  let n = 0;
+  for (const id of sessions.keys()) {
+    if (!isSystemSessionId(id)) n++;
+  }
+  return n;
 }
 
 export function hasSession(sessionId: string): boolean {
@@ -171,6 +190,26 @@ export function showSession(sessionId: string): boolean {
 export async function navigateSession(sessionId: string, url: string): Promise<number> {
   log.info(`[Panels] navigateSession(${sessionId.slice(0, 8)}) — url: ${url}`);
   let session = sessions.get(sessionId);
+
+  // Tab-switch semantics: if this session already hosts the target origin,
+  // just bring it to the front. Reloading would discard form state, scroll
+  // position, and force the webapp's Supabase client to re-hydrate — which
+  // in turn fires a cascade of AUTH_SEND_TOKEN pushes and (for viewB) would
+  // tear down the TailorPage mid-interaction. Only callers legitimately
+  // wanting a reload should do so by destroying the session first.
+  if (session && session.tabId !== null) {
+    try {
+      const currentUrl = session.viewA.webContents.getURL();
+      if (currentUrl && new URL(currentUrl).origin === new URL(url).origin) {
+        log.info(`[Panels] navigateSession(${sessionId.slice(0, 8)}) — origin match, skipping reload`);
+        showSession(sessionId);
+        return session.tabId;
+      }
+    } catch (err) {
+      log.warn(`[Panels] navigateSession(${sessionId.slice(0, 8)}) — URL parse failed, falling through to full navigate: ${(err as Error).message}`);
+    }
+  }
+
   if (!session) {
     const created = createSession(sessionId);
     if (!created) throw new Error('Session cap reached');
@@ -310,5 +349,7 @@ export function getSessionCount(): number {
 }
 
 export function isAtCapacity(): boolean {
-  return sessions.size >= MAX_SESSIONS;
+  // Capacity is measured in browser-job sessions only. System sessions
+  // (sidebar nav views) do not compete for the worker-matched budget.
+  return countJobSessions() >= MAX_BROWSER_JOB_SESSIONS;
 }

@@ -42,8 +42,13 @@ const finbroApi = {
   },
 
   panel: {
-    navigate: async (url: string) => {
-      return ipcRenderer.invoke(IpcChannel.PANEL_NAVIGATE, { url });
+    // sessionId defaults to '__webapp__' on the main side when omitted,
+    // preserving the pre-existing single-webapp-view behaviour for any
+    // caller that does not specify a session (e.g. the logo click).
+    // Pass an explicit id (e.g. '__gmail__', '__outlook__') to host a
+    // different origin in its own persistent BrowserView.
+    navigate: async (url: string, sessionId?: string) => {
+      return ipcRenderer.invoke(IpcChannel.PANEL_NAVIGATE, { url, sessionId });
     },
     resize: async (width: number) => {
       return ipcRenderer.invoke(IpcChannel.PANEL_RESIZE, { width });

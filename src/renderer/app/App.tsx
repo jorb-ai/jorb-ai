@@ -191,8 +191,8 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  const handleNavigate = useCallback((url: string) => {
-    window.Finbro.panel.navigate(url);
+  const handleNavigate = useCallback((url: string, sessionId?: string) => {
+    window.Finbro.panel.navigate(url, sessionId);
   }, []);
 
   const handleStop = useCallback((jobId: string) => {

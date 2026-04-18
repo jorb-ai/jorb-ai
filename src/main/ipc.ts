@@ -18,9 +18,13 @@ import { setRightPanelWidth } from './windows';
 export function registerIpcHandlers(): void {
   log.info('[IPC] Registering handlers...');
 
-  // Legacy panel navigate — used by left panel for web app nav (Dashboard, Gmail, etc.)
-  ipcMain.handle(IpcChannel.PANEL_NAVIGATE, async (_event: IpcMainInvokeEvent, args: { url: string }) => {
-    await navigateSession('__webapp__', args.url);
+  // Sidebar nav — each external origin (webapp, Gmail, Outlook, ...)
+  // gets its own persistent session so switching between them only
+  // toggles z-order rather than reloading a shared view. `sessionId`
+  // defaults to '__webapp__' for backwards-compatible callers.
+  ipcMain.handle(IpcChannel.PANEL_NAVIGATE, async (_event: IpcMainInvokeEvent, args: { url: string; sessionId?: string }) => {
+    const sid = args.sessionId ?? '__webapp__';
+    await navigateSession(sid, args.url);
   });
 
   ipcMain.handle(IpcChannel.CONFIG_GET, async () => {
