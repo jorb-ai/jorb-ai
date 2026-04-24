@@ -9,20 +9,23 @@ export enum IpcChannel {
   AUTH_SEND_TOKEN = 'auth:send-token',
   AUTH_TOKEN_CHANGED = 'auth:token-changed',
 
-  // Session lifecycle (Phase 3)
+  // Session lifecycle
   SESSION_SHOW = 'session:show',
   SESSION_SHOW_TAILOR = 'session:show-tailor',
+  SESSION_SHOW_PLACEHOLDER = 'session:show-placeholder',
   SESSION_DESTROY = 'session:destroy',
   SESSION_STATUS = 'session:status',
 
-  // Browser panel (legacy — kept for web app nav)
+  // Middle-panel navigation (system tabs load via navigateSession)
   PANEL_NAVIGATE = 'panel:navigate',
-  PANEL_RESIZE = 'panel:resize',
+  // Renderer tells main how tall the action bar currently is so
+  // BrowserView bounds are computed from the right offset.
+  PANEL_SET_BAR_HEIGHT = 'panel:set-bar-height',
 
   // Browser automation
   BROWSER_STOP = 'browser:stop',
 
-  // Spec 4.3 — WS-backed RPC surface
+  // WS-backed RPC surface (Spec 4.3)
   RPC_REQUEST = 'rpc:request',
   RPC_SUBSCRIBE = 'rpc:subscribe',
   RPC_UNSUBSCRIBE = 'rpc:unsubscribe',

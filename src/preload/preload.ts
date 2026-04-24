@@ -7,9 +7,10 @@ const IpcChannel = {
   AUTH_TOKEN_CHANGED: 'auth:token-changed',
   BROWSER_STOP: 'browser:stop',
   PANEL_NAVIGATE: 'panel:navigate',
-  PANEL_RESIZE: 'panel:resize',
+  PANEL_SET_BAR_HEIGHT: 'panel:set-bar-height',
   SESSION_SHOW: 'session:show',
   SESSION_SHOW_TAILOR: 'session:show-tailor',
+  SESSION_SHOW_PLACEHOLDER: 'session:show-placeholder',
   SESSION_DESTROY: 'session:destroy',
   SESSION_STATUS: 'session:status',
   RPC_REQUEST: 'rpc:request',
@@ -42,16 +43,16 @@ const finbroApi = {
   },
 
   panel: {
-    // sessionId defaults to '__webapp__' on the main side when omitted,
-    // preserving the pre-existing single-webapp-view behaviour for any
-    // caller that does not specify a session (e.g. the logo click).
+    // sessionId defaults to '__webapp__' on the main side when omitted.
     // Pass an explicit id (e.g. '__gmail__', '__outlook__') to host a
     // different origin in its own persistent BrowserView.
     navigate: async (url: string, sessionId?: string) => {
       return ipcRenderer.invoke(IpcChannel.PANEL_NAVIGATE, { url, sessionId });
     },
-    resize: async (width: number) => {
-      return ipcRenderer.invoke(IpcChannel.PANEL_RESIZE, { width });
+    // Renderer notifies main of the current action-bar height (44 or 96)
+    // so BrowserView bounds stay aligned with the HTML chrome.
+    setBarHeight: async (height: number) => {
+      return ipcRenderer.invoke(IpcChannel.PANEL_SET_BAR_HEIGHT, { height });
     },
   },
 
@@ -62,6 +63,9 @@ const finbroApi = {
     showTailor: async (sessionId: string) => {
       return ipcRenderer.invoke(IpcChannel.SESSION_SHOW_TAILOR, { sessionId });
     },
+    showPlaceholder: async () => {
+      return ipcRenderer.invoke(IpcChannel.SESSION_SHOW_PLACEHOLDER);
+    },
     destroy: async (sessionId: string) => {
       return ipcRenderer.invoke(IpcChannel.SESSION_DESTROY, { sessionId });
     },
@@ -70,7 +74,6 @@ const finbroApi = {
     },
   },
 
-  // Spec 4.3 — WS-backed RPC surface used by renderer/lib/rpc.ts
   rpc: {
     request: async (msg: unknown) => ipcRenderer.invoke(IpcChannel.RPC_REQUEST, msg),
     subscribe: async () => ipcRenderer.invoke(IpcChannel.RPC_SUBSCRIBE),

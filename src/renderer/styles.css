@@ -1,76 +1,137 @@
+/* ═══════════════════════════════════════════════════════════════════
+   jorb.ai — renderer design system
+   Mirrors the finbro.me webapp's palette, typography, and sidebar
+   patterns (see finbro.me/src/components/navigation/desktop/Sidebar.tsx
+   and finbro.me/tailwind.config.ts).
+
+   - System font stack (no web fonts, no Google Fonts)
+   - Pure white surfaces, Tailwind-aligned gray scale
+   - Single primary accent (#290E99) for "act now" signals
+   - Radius 8px, shadow-sm chrome, matches shadcn-on-tailwind aesthetic
+   ═══════════════════════════════════════════════════════════════════ */
+
 :root {
-  --left-width: 180px;
-  --header-height: 34px;
-  --border-color: #e5e5ea;
-  --bg-panel: #ffffff;
-  --bg-sidebar: #f7f7f8;
-  --bg-app: #f4f5f7;
-  --text-primary: #1a1a1a;
-  --text-secondary: #64646e;
-  --text-muted: #a0a0ab;
-  --brand: #290E99;
-  --brand-soft: rgba(41, 14, 153, 0.07);
+  /* ── Primary accent (the one "act now" color) ───────────────────── */
+  --primary:            #290E99;
+  --primary-soft:       rgba(41, 14, 153, 0.08);
+  --primary-hover:      rgba(41, 14, 153, 0.14);
+
+  /* ── Neutrals (Tailwind gray-N) ─────────────────────────────────── */
+  --white:              #FFFFFF;
+  --gray-50:            #F9FAFB;
+  --gray-100:           #F3F4F6;
+  --gray-200:           #E5E7EB;
+  --gray-300:           #D1D5DB;
+  --gray-400:           #9CA3AF;
+  --gray-500:           #6B7280;
+  --gray-600:           #4B5563;
+  --gray-700:           #374151;
+  --gray-800:           #1F2937;
+  --gray-900:           #111827;
+
+  /* ── Semantic (used on icons / marks, not backgrounds) ──────────── */
+  --success:            #10B981;
+  --warning:            #F59E0B;
+  --danger:             #EF4444;
+
+  /* ── Typography — system stack (mirrors finbro.me tailwind config) ── */
+  --font-sans:          -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+
+  /* ── Layout constants ───────────────────────────────────────────── */
+  --sidebar-width:      200px;
+  --bar-collapsed:      44px;
+  --bar-expanded:       96px;
+  --header-height:      64px;
+
+  /* ── Shadows ────────────────────────────────────────────────────── */
+  --shadow-sm:          0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md:          0 4px 6px -1px rgba(0, 0, 0, 0.06), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
+  --shadow-lg:          0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
+
+  /* ── Motion ─────────────────────────────────────────────────────── */
+  --ease-out:           cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in-out:        cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast:           120ms;
+  --dur-base:           200ms;
+  --dur-slow:           300ms;
+
+  /* ── Radius ─────────────────────────────────────────────────────── */
+  --radius-sm:          4px;
+  --radius-md:          6px;
+  --radius-lg:          8px;
 }
 
-* { margin: 0; padding: 0; box-sizing: border-box; }
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+}
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--gray-900);
+  background: var(--white);
   overflow: hidden;
-  background: var(--bg-app);
-  color: var(--text-primary);
-  font-size: 13px;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
-/* ═══════════════════════════════════════════════════════════
-   APP SHELL
-   ═══════════════════════════════════════════════════════════ */
+button {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   APP SHELL — two-panel: sidebar + middle (action bar + browser area)
+   ══════════════════════════════════════════════════════════════════════ */
 
 .app-shell {
   display: flex;
   width: 100vw;
   height: 100vh;
+  background: var(--white);
 }
 
 .panel-left {
-  width: var(--left-width);
-  min-width: var(--left-width);
-  border-right: 1px solid var(--border-color);
-  background: var(--bg-sidebar);
+  width: var(--sidebar-width);
+  min-width: var(--sidebar-width);
+  background: var(--white);
+  border-right: 1px solid var(--gray-300);
+  box-shadow: var(--shadow-sm);
   display: flex;
   flex-direction: column;
+  z-index: 2;
 }
 
 .panel-middle {
   flex: 1;
-  display: flex;
-  flex-direction: column;
   min-width: 0;
-}
-
-.panel-right {
-  border-left: 1px solid var(--border-color);
-  background: var(--bg-panel);
   display: flex;
   flex-direction: column;
+  background: var(--white);
+  position: relative;
 }
 
-/* ═══════════════════════════════════════════════════════════
-   RESIZE HANDLE — grip dots
-   ═══════════════════════════════════════════════════════════ */
-
-.panel-resize-handle {
-  width: 4px;
-  cursor: col-resize;
-  background: transparent;
-  z-index: 10;
-  flex-shrink: 0;
+.panel-browser {
+  flex: 1;
+  min-height: 0;
+  position: relative;
 }
 
-/* ═══════════════════════════════════════════════════════════
-   SIDEBAR
-   ═══════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════════════════
+   SIDEBAR — mirrors finbro.me/src/components/navigation/desktop/Sidebar.tsx
+   ══════════════════════════════════════════════════════════════════════ */
 
 .sidebar {
   display: flex;
@@ -79,417 +140,497 @@ body {
   user-select: none;
 }
 
-/* ── Brand — exactly var(--header-height), one line with middle + right ── */
-
+/* Brand mark — image logo, h-16 header matching finbro.me */
 .sidebar__brand {
   height: var(--header-height);
   min-height: var(--header-height);
-  padding: 0 10px;
-  cursor: pointer;
-  border-bottom: 1px solid var(--border-color);
+  padding: 0 12px;
   display: flex;
   align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-bottom: 1px solid var(--gray-300);
 }
 
-.sidebar__wordmark {
-  display: block;
-  width: 100%;
-  max-height: 24px;
+.sidebar__logo {
+  height: 32px;
+  width: auto;
+  max-width: 100%;
   object-fit: contain;
-  object-position: left center;
-  opacity: 0.9;
-  transition: opacity 0.15s;
+  transition: opacity var(--dur-fast) var(--ease-out);
 }
 
-.sidebar__brand:hover .sidebar__wordmark {
-  opacity: 1;
+.sidebar__brand:hover .sidebar__logo {
+  opacity: 0.78;
 }
 
-/* ── Sections ──────────────────────────────────────────── */
+/* Sections — flex container; Applications grows to fill.
+   Layout constants: nav items have margin-left 8 + padding-left 12 = 20px
+   to their text. Section headers use the same 20px left padding so the
+   header labels and the nav item labels stack in one visual column. */
+
+.sidebar__sections {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 0 10px;
+  display: flex;
+  flex-direction: column;
+}
 
 .sidebar__section {
-  padding: 8px 0 2px;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar__section + .sidebar__section {
+  position: relative;
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.sidebar__section + .sidebar__section::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 12px;
+  right: 12px;
+  height: 1px;
+  background: var(--gray-200);
 }
 
 .sidebar__section--grow {
   flex: 1;
-  display: flex;
-  flex-direction: column;
   min-height: 0;
-  padding-bottom: 0;
 }
 
 .sidebar__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 12px 3px;
-  font-size: 10px;
-  font-weight: 700;
+  padding: 0 20px 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--brand);
+  color: var(--gray-500);
 }
 
-.sidebar__badge {
-  font-size: 9px;
-  font-weight: 700;
-  color: var(--brand);
-  background: var(--brand-soft);
-  padding: 1px 5px;
-  border-radius: 6px;
-  letter-spacing: 0;
-}
-
-.sidebar__badge--attention {
-  color: #7c3aed;
-  background: rgba(139, 92, 246, 0.14);
-}
-
-/* ── Nav items — purple tinted like session rows ──────── */
+/* Nav items — mirrors finbro.me SidebarNavigation item pattern.
+   Inactive: text-gray-700, hover bg-gray-100.
+   Active:   bg-gray-100, text-gray-900, font-medium. */
 
 .sidebar__nav-item {
+  height: 28px;
+  margin: 1px 8px;
+  padding: 0 12px;
   display: flex;
   align-items: center;
-  margin: 1px 6px;
-  padding: 4px 8px;
-  border-radius: 4px;
-  height: 26px;
-  font-size: 11.5px;
-  font-weight: 500;
-  color: var(--brand);
-  background: var(--brand-soft);
+  gap: 8px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: var(--gray-700);
   cursor: pointer;
-  transition: filter 0.1s;
+  transition: background var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out);
 }
 
 .sidebar__nav-item:hover {
-  filter: brightness(0.95);
+  background: var(--gray-100);
+  color: var(--gray-900);
 }
 
-/* ── Application list ──────────────────────────────────── */
+.sidebar__nav-item--active {
+  background: var(--gray-100);
+  color: var(--gray-900);
+  font-weight: 500;
+}
+
+/* Applications list — scrollable when populated. */
 
 .sidebar__list {
   flex: 1;
-  overflow-y: auto;
-  padding: 2px 6px;
   min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
 .sidebar__empty {
-  padding: 20px 8px;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 11px;
+  padding: 8px 20px;
+  color: var(--gray-500);
+  font-size: 12.5px;
+  line-height: 1.5;
 }
 
-/* ── Session Row ───────────────────────────────────────── */
+/* ── Session row — same chrome as nav item for a single, coherent column ── */
 
 .session-row {
+  position: relative;
+  height: 28px;
+  margin: 1px 8px;
+  padding: 0 12px;
   display: flex;
   align-items: center;
-  padding: 4px 8px;
-  border-radius: 4px;
+  gap: 8px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  height: 26px;
-  transition: filter 0.1s;
+  color: var(--gray-700);
+  transition: background var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out);
 }
 
 .session-row:hover {
-  filter: brightness(0.95);
+  background: var(--gray-100);
+  color: var(--gray-900);
 }
 
 .session-row--active {
-  filter: brightness(0.90);
+  background: var(--gray-100);
+  color: var(--gray-900);
   font-weight: 500;
 }
 
-.session-row__indicator {
-  flex-shrink: 0;
-  font-size: 10px;
-  line-height: 1;
-  animation: pulse-attention 2s ease-in-out infinite;
+.session-row--queued  { opacity: 0.62; }
+.session-row--stopped { opacity: 0.55; }
+.session-row--stopped .session-row__label {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
 }
 
 .session-row__label {
-  font-size: 11.5px;
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.session-row__mark {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  font-size: 11px;
   line-height: 1;
+  font-weight: 600;
 }
 
-@keyframes pulse-attention {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+.session-row__mark--attention {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--primary);
+  animation: breathe 1.8s var(--ease-in-out) infinite;
 }
 
-/* ── Legend — single compact row ──────────────────────── */
+.session-row__mark--success { color: var(--success); }
+.session-row__mark--danger  { color: var(--danger); }
 
-.sidebar__legend {
+/* ══════════════════════════════════════════════════════════════════════
+   ACTION BAR — adaptive height, state-driven content
+   Same design language as the rest of the shell: white surface,
+   gray-300 hairline bottom border.
+   ══════════════════════════════════════════════════════════════════════ */
+
+.action-bar {
+  position: relative;
+  height: var(--bar-collapsed);
+  background: var(--white);
+  border-bottom: 1px solid var(--gray-300);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.action-bar--expanded {
+  height: var(--bar-expanded);
+}
+
+/* Primary left rail when the session needs user action. */
+.action-bar--attention::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--primary);
+}
+
+/* ── Collapsed mode (44px, single line) ─────────────────────────── */
+
+.action-bar__collapsed {
+  height: var(--bar-collapsed);
+  padding: 0 18px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  border-top: 1px solid var(--border-color);
+  gap: 10px;
 }
 
-.sidebar__legend-item {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 8.5px;
-  color: var(--text-muted);
+.action-bar__breadcrumb {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--gray-900);
   white-space: nowrap;
 }
 
-.sidebar__legend-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 2px;
-  flex-shrink: 0;
+.action-bar__sep {
+  color: var(--gray-400);
 }
 
-/* ═══════════════════════════════════════════════════════════
-   ACTION BAR — empty strip, same height as brand + agent header
-   ═══════════════════════════════════════════════════════════ */
-
-.action-bar {
-  height: var(--header-height);
-  min-height: var(--header-height);
-  border-bottom: 1px solid var(--border-color);
-  background: var(--bg-panel);
+.action-bar__status-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--gray-500);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.action-bar__content {
+.action-bar__status-text--muted   { color: var(--gray-500); }
+.action-bar__status-text--success { color: var(--success); }
+.action-bar__status-text--danger  { color: var(--danger); }
+
+/* ── Expanded mode (96px, 3-line streaming strip) ───────────────── */
+
+.action-bar__expanded {
+  padding: 16px 18px;
+  height: var(--bar-expanded);
+  display: grid;
+  grid-template-rows: 20px 18px 14px;
+  grid-row-gap: 4px;
+}
+
+.action-bar__row-top {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  height: 100%;
-  padding: 0 12px;
-  gap: 8px;
+  gap: 10px;
+  min-width: 0;
 }
 
-.action-bar__status {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
+.action-bar__title {
+  font-size: 14px;
   font-weight: 500;
-  color: var(--text-muted);
+  color: var(--gray-900);
+  line-height: 20px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
 }
 
-.action-bar__status--running { color: #a16207; }
-.action-bar__status--tailoring { color: var(--brand); }
-.action-bar__status--needs-review { color: #7c3aed; }
-
-.action-bar__dot {
-  width: 6px;
-  height: 6px;
+.action-bar__live {
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
+  background: var(--primary);
   flex-shrink: 0;
+  animation: breathe 1.8s var(--ease-in-out) infinite;
 }
-
-.action-bar__dot--running { background: #eab308; }
-.action-bar__dot--tailoring { background: var(--brand); }
-.action-bar__dot--needs-review { background: #8b5cf6; animation: pulse-attention 2s ease-in-out infinite; }
 
 .action-bar__stop {
-  padding: 2px 10px;
-  font-size: 10px;
-  font-weight: 600;
-  border: 1px solid #e5e5ea;
-  border-radius: 4px;
-  background: white;
-  color: #dc2626;
-  cursor: pointer;
-  transition: background 0.1s;
+  height: 24px;
+  padding: 0 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--gray-300);
+  background: var(--white);
+  color: var(--gray-700);
+  font-size: 12px;
+  font-weight: 500;
+  transition: background var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out);
 }
 
 .action-bar__stop:hover {
-  background: #fef2f2;
+  background: var(--gray-100);
+  border-color: var(--gray-400);
+  color: var(--gray-900);
 }
 
-/* ═══════════════════════════════════════════════════════════
-   AGENT PANEL (Right)
-   ═══════════════════════════════════════════════════════════ */
-
-.chat-feed {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
-/* Header — exactly var(--header-height), one line with brand + action bar */
-.chat-feed-header {
-  height: var(--header-height);
-  min-height: var(--header-height);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 14px;
-  font-weight: 600;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
-  border-bottom: 1px solid var(--border-color);
-}
-
-.chat-feed-messages {
-  flex: 1;
-  overflow-y: auto;
-  padding: 6px 0 12px;
-}
-
-.chat-empty {
-  padding: 28px 14px;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 11px;
-  line-height: 1.6;
-}
-
-.chat-empty--waiting {
-  animation: fade-pulse 1.8s ease-in-out infinite;
-}
-
-/* ── Agent Step ────────────────────────────────────────── */
-
-.agent-step {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 5px 12px;
-  animation: step-slide-in 0.2s cubic-bezier(0.4, 0, 0.2, 1) both;
-}
-
-.agent-step__icon {
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  margin-top: 1px;
-  color: var(--text-muted);
-}
-
-.agent-step--tool_call .agent-step__icon { color: var(--brand); }
-.agent-step--status .agent-step__icon { color: #22c55e; }
-.agent-step--error .agent-step__icon { color: #ef4444; }
-
-.agent-step__text {
-  flex: 1;
-  min-width: 0;
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--text-muted);
-  word-break: break-word;
-}
-
-.agent-step--error .agent-step__text {
-  color: #ef4444;
-}
-
-/* ── Tailor Thread ─────────────────────────────────────── */
-
-.tailor-thread {
-  margin: 4px 8px;
-  padding: 8px 10px;
-  border-radius: 6px;
-  background: var(--brand-soft);
-  border-left: 2px solid var(--brand);
-  animation: step-slide-in 0.2s cubic-bezier(0.4, 0, 0.2, 1) both;
-}
-
-.tailor-thread__header {
+.action-bar__action {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--gray-900);
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--brand);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.tailor-thread__icon {
-  font-size: 12px;
-}
-
-.tailor-thread__body {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-top: 4px;
-}
-
-.tailor-thread__step {
-  font-size: 11px;
-  color: var(--text-secondary);
-  padding-left: 20px;
-}
-
-.tailor-thread__step--done {
-  color: #15803d;
-}
-
-.tailor-thread__step--review {
-  color: #7c3aed;
+.action-bar__action-arrow {
+  color: var(--primary);
   font-weight: 500;
 }
 
-.tailor-thread__step--error {
-  color: #dc2626;
+.action-bar__action--attention {
+  color: var(--primary);
+  font-weight: 500;
 }
 
-.tailor-thread--reviewable {
-  cursor: pointer;
-  transition: filter 0.1s;
+.action-bar__action-fade {
+  animation: action-fade-in var(--dur-base) var(--ease-out) both;
 }
 
-.tailor-thread--reviewable:hover {
-  filter: brightness(0.95);
+.action-bar__trail {
+  font-size: 11.5px;
+  line-height: 14px;
+  color: var(--gray-500);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
-/* ── Streaming Dots ────────────────────────────────────── */
-
-.streaming-dots {
+.action-bar__trail-item {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
+  white-space: nowrap;
 }
 
-.streaming-dots__dot {
-  width: 3px;
-  height: 3px;
+.action-bar__trail-item::before {
+  content: '·';
+  color: var(--gray-400);
+  margin-right: 2px;
+}
+
+.action-bar__trail-item:first-child::before {
+  content: none;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   PLACEHOLDER CARD — shown when active session has no BrowserView
+   ══════════════════════════════════════════════════════════════════════ */
+
+.placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: var(--white);
+  animation: placeholder-enter var(--dur-slow) var(--ease-out) both;
+}
+
+.placeholder__card {
+  width: 100%;
+  max-width: 440px;
+  background: var(--white);
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: 28px 32px;
+}
+
+.placeholder__eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--gray-500);
+  margin-bottom: 12px;
+}
+
+.placeholder__eyebrow--queued    { color: var(--gray-500); }
+.placeholder__eyebrow--completed { color: var(--success); }
+.placeholder__eyebrow--failed    { color: var(--danger); }
+.placeholder__eyebrow--stopped   { color: var(--gray-500); }
+
+.placeholder__mark {
+  font-size: 12px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-weight: 700;
+}
+
+.placeholder__title {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--gray-900);
+  line-height: 1.3;
+  margin-bottom: 6px;
+}
+
+.placeholder__meta {
+  font-size: 12.5px;
+  color: var(--gray-500);
+  margin-bottom: 18px;
+}
+
+.placeholder__body {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--gray-700);
+  max-width: 38ch;
+}
+
+.placeholder__hint {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--gray-200);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  color: var(--gray-500);
+}
+
+.placeholder__queued-dot {
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  animation: streaming-dot-bounce 1.2s ease-in-out infinite;
+  background: var(--gray-400);
+  animation: breathe 1.8s var(--ease-in-out) infinite;
 }
 
-@keyframes streaming-dot-bounce {
-  0%, 60%, 100% { transform: translateY(0); opacity: 0.35; }
-  30% { transform: translateY(-3px); opacity: 1; }
+/* ══════════════════════════════════════════════════════════════════════
+   ANIMATIONS
+   ══════════════════════════════════════════════════════════════════════ */
+
+@keyframes breathe {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.5; }
 }
 
-/* ═══════════════════════════════════════════════════════════
-   SHARED
-   ═══════════════════════════════════════════════════════════ */
+@keyframes action-fade-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 
-@keyframes step-slide-in {
+@keyframes placeholder-enter {
   from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes fade-pulse {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 1; }
-}
+/* ══════════════════════════════════════════════════════════════════════
+   SCROLLBARS — thin, surface until hovered
+   ══════════════════════════════════════════════════════════════════════ */
 
-::-webkit-scrollbar { width: 3px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: #a1a1aa; }
+::-webkit-scrollbar        { width: 8px; height: 8px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  {
+  background: transparent;
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*:hover::-webkit-scrollbar-thumb {
+  background: var(--gray-300);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--gray-400); background-clip: padding-box; }

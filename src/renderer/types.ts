@@ -4,6 +4,7 @@ export interface BrowserJobRow {
   status: 'queued' | 'running' | 'completed' | 'failed' | 'stopped';
   events: BrowserEvent[];
   created_at: string;
+  completed_at?: string | null;
   result_meta?: any;
   error_message?: string;
   // Enriched from jobs table (may be null for old rows)
@@ -29,7 +30,7 @@ export interface AgentJobEvent {
   [key: string]: any;
 }
 
-/** Derived display status for session rows (Phase 3). */
+/** Derived display status for session rows. */
 export type SessionDisplayStatus = BrowserJobRow['status'] | 'needs_attention';
 
 /** Derive the display status from a browser job row. */
@@ -58,11 +59,12 @@ declare global {
       };
       panel: {
         navigate: (url: string, sessionId?: string) => Promise<void>;
-        resize: (width: number) => Promise<void>;
+        setBarHeight: (height: number) => Promise<void>;
       };
       session: {
         show: (sessionId: string) => Promise<boolean>;
         showTailor: (sessionId: string) => Promise<boolean>;
+        showPlaceholder: () => Promise<void>;
         destroy: (sessionId: string) => Promise<void>;
         status: () => Promise<{ count: number; atCapacity: boolean }>;
       };

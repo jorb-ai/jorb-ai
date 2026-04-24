@@ -7,9 +7,14 @@ import { setMainWindowRef } from './auth';
 
 let mainWindow: BrowserWindow | null = null;
 
-const LEFT_PANEL_WIDTH = 180;
-const ACTION_BAR_HEIGHT = 34;
-let rightPanelWidth = 260;
+// Sidebar is fixed; action bar is variable (44px system tab / 96px running
+// agent session). The renderer notifies the main process of the current
+// bar height via IPC so BrowserView bounds stay correct. Must stay in
+// sync with `--sidebar-width` in renderer/styles.css.
+const SIDEBAR_WIDTH = 200;
+const DEFAULT_BAR_HEIGHT = 44;
+
+let currentBarHeight = DEFAULT_BAR_HEIGHT;
 
 export async function createMainWindow(): Promise<BrowserWindow> {
   log.info('[Windows] Creating main window...');
@@ -29,7 +34,7 @@ export async function createMainWindow(): Promise<BrowserWindow> {
       sandbox: true,
     },
     title: 'jorb.ai',
-    backgroundColor: '#ffffff',
+    backgroundColor: '#FDFDFB',
     show: false,
   });
 
@@ -42,11 +47,11 @@ export async function createMainWindow(): Promise<BrowserWindow> {
   const rendererPath = path.join(__dirname, '../renderer/index.html');
   await mainWindow.loadFile(rendererPath);
 
-  // Initialize lifecycle manager and load web app as the default session
-  const contentSize = mainWindow.getContentSize();
-  initPanels(mainWindow, computeBrowserViewBounds(contentSize[0], contentSize[1]));
+  const [cw, ch] = mainWindow.getContentSize();
+  initPanels(mainWindow, computeBrowserViewBounds(cw, ch));
 
-  // Load web app immediately so user can browse and trigger auto-apply
+  // Load webapp as the default __webapp__ session so the middle panel is
+  // not blank while the user authenticates.
   navigateSession('__webapp__', 'http://localhost:3000').catch(() => {
     log.warn('[Windows] localhost:3000 not available — BrowserView blank');
   });
@@ -71,21 +76,26 @@ export async function createMainWindow(): Promise<BrowserWindow> {
 }
 
 function computeBrowserViewBounds(windowWidth: number, windowHeight: number) {
-  // +4 accounts for the resize handle width
   return {
-    x: LEFT_PANEL_WIDTH,
-    y: ACTION_BAR_HEIGHT,
-    width: windowWidth - LEFT_PANEL_WIDTH - rightPanelWidth - 4,
-    height: windowHeight - ACTION_BAR_HEIGHT,
+    x: SIDEBAR_WIDTH,
+    y: currentBarHeight,
+    width: windowWidth - SIDEBAR_WIDTH,
+    height: windowHeight - currentBarHeight,
   };
 }
 
-export function setRightPanelWidth(width: number): void {
-  rightPanelWidth = width;
-  if (mainWindow) {
-    const [w, h] = mainWindow.getContentSize();
-    layoutBrowserViews(computeBrowserViewBounds(w, h));
-  }
+/**
+ * Called by ipc when the renderer's action bar changes height
+ * (44px collapsed / 96px expanded). We store the new value and re-flow
+ * all BrowserViews against it so the browser area lines up with whatever
+ * the bar is rendering.
+ */
+export function setActionBarHeight(height: number): void {
+  if (height === currentBarHeight) return;
+  currentBarHeight = height;
+  if (!mainWindow) return;
+  const [w, h] = mainWindow.getContentSize();
+  layoutBrowserViews(computeBrowserViewBounds(w, h));
 }
 
 export function getMainWindow(): BrowserWindow | null {

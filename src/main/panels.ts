@@ -44,6 +44,12 @@ let parentWindow: BrowserWindow | null = null;
 let currentBounds: PanelBounds = { x: 0, y: 0, width: 800, height: 600 };
 let activeSessionId: string | null = null;
 
+// When the renderer is showing a placeholder card for a viewless session
+// (queued / completed-past-grace / failed / stopped), ALL BrowserViews
+// must be detached from the window so the HTML middle panel becomes
+// visible underneath. `reorderViews` short-circuits in this mode.
+let placeholderMode = false;
+
 const sessions = new Map<string, Session>();
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -87,11 +93,15 @@ function applyBounds(view: BrowserView): void {
 function reorderViews(): void {
   if (!parentWindow) return;
 
-  // Remove all views, then re-add: hidden sessions first, active session last (on top).
+  // Remove all views first.
   for (const [, session] of sessions) {
     parentWindow.removeBrowserView(session.viewA);
     if (session.viewB) parentWindow.removeBrowserView(session.viewB);
   }
+
+  // In placeholder mode we leave everything detached so the HTML middle
+  // panel (which renders the placeholder card) is visible to the user.
+  if (placeholderMode) return;
 
   const active = activeSessionId ? sessions.get(activeSessionId) : null;
 
@@ -181,10 +191,25 @@ export function showSession(sessionId: string): boolean {
     return false;
   }
   const prev = activeSessionId;
+  placeholderMode = false;
   activeSessionId = sessionId;
   reorderViews();
   log.info(`[Panels] showSession(${sessionId.slice(0, 8)}) — prev=${prev?.slice(0, 8) ?? 'none'}`);
   return true;
+}
+
+/**
+ * Detach all BrowserViews from the window so the HTML middle panel
+ * (placeholder card) is visible. Used when the renderer wants to show
+ * state for a session that has no BrowserView (queued, or completed/failed/
+ * stopped past the 30s grace period).
+ */
+export function showPlaceholder(): void {
+  if (placeholderMode) return;
+  placeholderMode = true;
+  activeSessionId = null;
+  reorderViews();
+  log.info(`[Panels] showPlaceholder — detached all views`);
 }
 
 export async function navigateSession(sessionId: string, url: string): Promise<number> {
