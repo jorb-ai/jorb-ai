@@ -12,11 +12,16 @@ export enum IpcChannel {
   // Session lifecycle
   SESSION_SHOW = 'session:show',
   SESSION_SHOW_TAILOR = 'session:show-tailor',
-  SESSION_SHOW_PLACEHOLDER = 'session:show-placeholder',
   SESSION_DESTROY = 'session:destroy',
   SESSION_STATUS = 'session:status',
+  // One-way main → renderer push: fired whenever panels.ts:showSession
+  // brings a session to the front. Lets the renderer mirror activeJobId
+  // when the worker auto-jumps via the `navigate` WS command. Without
+  // this, the BrowserView swaps to the front but the sidebar row never
+  // gets the active pill until the user clicks.
+  SESSION_ACTIVE_CHANGED = 'session:active-changed',
 
-  // Middle-panel navigation (system tabs load via navigateSession)
+  // Middle-panel navigation (system tabs route via showOrNavigateSession)
   PANEL_NAVIGATE = 'panel:navigate',
   // Renderer tells main how tall the action bar currently is so
   // BrowserView bounds are computed from the right offset.
@@ -24,6 +29,10 @@ export enum IpcChannel {
 
   // Browser automation
   BROWSER_STOP = 'browser:stop',
+  // User clicked X on a sidebar row — server stops (if running) + deletes
+  // the browser_jobs row. Distinct from BROWSER_STOP, which only halts
+  // execution and leaves the row.
+  BROWSER_CLOSE = 'browser:close',
 
   // WS-backed RPC surface (Spec 4.3)
   RPC_REQUEST = 'rpc:request',

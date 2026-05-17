@@ -14,6 +14,9 @@ export default defineConfig({
     },
   },
   server: {
-    port: 3000,
+    // 5273 — dedicated port for the desktop-app renderer. The Vite default
+    // 5173 is owned by internal-dashboard; 3000 by web-app's dev server.
+    port: 5273,
+    strictPort: true,
   },
 });

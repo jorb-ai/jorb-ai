@@ -2,11 +2,12 @@ import { BrowserView, BrowserWindow, session as electronSession } from 'electron
 import * as path from 'path';
 import log from './logger';
 import { getConfigValue } from './config';
+import { IpcChannel } from '../types/ipc.types';
 
 // Cap for live browser-agent job sessions (one viewA per in-flight
 // browser_jobs row, plus optional viewB for tailor). Must match
 // `MAX_CONCURRENT_BROWSER_JOBS` on the `web-api` side — see
-// `workstreams/browser/CONTRACTS.md` C9. System sessions (ids prefixed
+// `workstreams/browser/contracts.md` C9. System sessions (ids prefixed
 // with `__`, e.g. `__webapp__`, `__gmail__`, `__outlook__`) are
 // long-lived ambient shells for sidebar nav and are EXCLUDED from this
 // cap so adding a new sidebar item can never shrink the job budget.
@@ -44,10 +45,10 @@ let parentWindow: BrowserWindow | null = null;
 let currentBounds: PanelBounds = { x: 0, y: 0, width: 800, height: 600 };
 let activeSessionId: string | null = null;
 
-// When the renderer is showing a placeholder card for a viewless session
-// (queued / completed-past-grace / failed / stopped), ALL BrowserViews
-// must be detached from the window so the HTML middle panel becomes
-// visible underneath. `reorderViews` short-circuits in this mode.
+// When the selected session has no BrowserView — a queued job the worker
+// hasn't navigated, or a job from an earlier app run — every BrowserView
+// is detached so the renderer's middle panel (the SessionPlaceholder
+// card) shows through. `reorderViews` short-circuits in this mode.
 let placeholderMode = false;
 
 const sessions = new Map<string, Session>();
@@ -99,8 +100,8 @@ function reorderViews(): void {
     if (session.viewB) parentWindow.removeBrowserView(session.viewB);
   }
 
-  // In placeholder mode we leave everything detached so the HTML middle
-  // panel (which renders the placeholder card) is visible to the user.
+  // Placeholder mode: leave every view detached so the renderer's middle
+  // panel (the SessionPlaceholder card) is visible underneath.
   if (placeholderMode) return;
 
   const active = activeSessionId ? sessions.get(activeSessionId) : null;
@@ -187,7 +188,13 @@ export function hasSession(sessionId: string): boolean {
 
 export function showSession(sessionId: string): boolean {
   if (!sessions.has(sessionId)) {
-    log.debug(`[Panels] showSession(${sessionId.slice(0, 8)}) — session not found`);
+    // No BrowserView for this session — a queued job the worker hasn't
+    // navigated yet, or a job from an earlier app run. Detach every view
+    // and report `false` so the renderer shows the SessionPlaceholder card.
+    log.info(`[Panels] showSession(${sessionId.slice(0, 8)}) — no view, placeholder mode`);
+    placeholderMode = true;
+    activeSessionId = null;
+    reorderViews();
     return false;
   }
   const prev = activeSessionId;
@@ -195,21 +202,27 @@ export function showSession(sessionId: string): boolean {
   activeSessionId = sessionId;
   reorderViews();
   log.info(`[Panels] showSession(${sessionId.slice(0, 8)}) — prev=${prev?.slice(0, 8) ?? 'none'}`);
-  return true;
-}
 
-/**
- * Detach all BrowserViews from the window so the HTML middle panel
- * (placeholder card) is visible. Used when the renderer wants to show
- * state for a session that has no BrowserView (queued, or completed/failed/
- * stopped past the 30s grace period).
- */
-export function showPlaceholder(): void {
-  if (placeholderMode) return;
-  placeholderMode = true;
-  activeSessionId = null;
-  reorderViews();
-  log.info(`[Panels] showPlaceholder — detached all views`);
+  // Push the active-session change to the renderer so the sidebar row
+  // gets the active pill even when the worker auto-jumps (i.e. `showSession`
+  // was triggered by an incoming `navigate` WS command, not a user click).
+  // Idempotent on the renderer side — if `activeJobId` already matches the
+  // setState is a no-op.
+  //
+  // Boot-race note: the very first `showSession` (for `__webapp__`) fires
+  // synchronously from `windows.ts:createMainWindow` after `loadURL`
+  // resolves, but BEFORE App.tsx mounts and registers its listener. That
+  // first push is dropped — harmless because App.tsx initializes
+  // `activeNavId='__webapp__'` to match. Don't add an ack/replay here
+  // unless we discover a sync gap that actually affects the user.
+  if (parentWindow && !parentWindow.isDestroyed() && !parentWindow.webContents.isDestroyed()) {
+    try {
+      parentWindow.webContents.send(IpcChannel.SESSION_ACTIVE_CHANGED, { sessionId });
+    } catch (e) {
+      log.warn(`[Panels] session:active-changed send failed: ${(e as Error).message}`);
+    }
+  }
+  return true;
 }
 
 export async function navigateSession(sessionId: string, url: string): Promise<number> {
@@ -271,6 +284,27 @@ export async function navigateSession(sessionId: string, url: string): Promise<n
   showSession(sessionId);
 
   return session.tabId;
+}
+
+/**
+ * Switch to a sidebar session: show it if it already exists, else
+ * create + load it. The sidebar nav (webapp / Gmail / Outlook) routes
+ * through here.
+ *
+ * Switching to an already-open tab is a pure z-order change — it must
+ * NOT reload. `navigateSession` re-runs `loadURL`, which re-walks the
+ * page's redirect chain (Gmail → sign-in, Outlook → www.microsoft.com)
+ * and costs a visible ~0.3-0.4s on every click. `showSession` is instant
+ * and preserves the tab's state (scroll position, sign-in, drafts).
+ */
+export async function showOrNavigateSession(sessionId: string, url: string): Promise<void> {
+  const session = sessions.get(sessionId);
+  if (session && session.tabId !== null) {
+    log.info(`[Panels] showOrNavigateSession(${sessionId.slice(0, 8)}) — existing tab, z-order switch`);
+    showSession(sessionId);
+    return;
+  }
+  await navigateSession(sessionId, url);
 }
 
 export function showTailorView(sessionId: string, url: string): boolean {

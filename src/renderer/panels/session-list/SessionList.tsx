@@ -8,6 +8,7 @@ interface SessionListProps {
   activeJobId: string | null;
   onSelect: (jobId: string) => void;
   onNavigate: (url: string, sessionId?: string) => void;
+  onClose: (jobId: string) => void;
   activeNavId?: string | null;
 }
 
@@ -32,6 +33,7 @@ export const SessionList: React.FC<SessionListProps> = ({
   activeJobId,
   onSelect,
   onNavigate,
+  onClose,
   activeNavId,
 }) => {
   const renderNavItem = (item: NavItem) => (
@@ -46,7 +48,7 @@ export const SessionList: React.FC<SessionListProps> = ({
 
   return (
     <div className="sidebar">
-      {/* Brand mark — wordmark logo, matches finbro.me Logo.tsx */}
+      {/* Brand mark — wordmark logo, matches web-app Logo.tsx */}
       <div
         className="sidebar__brand"
         onClick={() => onNavigate('http://localhost:3000', '__webapp__')}
@@ -80,6 +82,7 @@ export const SessionList: React.FC<SessionListProps> = ({
                   job={job}
                   isActive={job.id === activeJobId}
                   onClick={() => onSelect(job.id)}
+                  onClose={() => onClose(job.id)}
                 />
               ))
             )}

@@ -45,8 +45,16 @@ export function sendWsMessage(msg: unknown): void {
   if (t === 'subscribe') hasSubscribed = true;
   else if (t === 'unsubscribe') hasSubscribed = false;
 
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(msg));
+  const isOpen = ws && ws.readyState === WebSocket.OPEN;
+  // Log the high-signal message types at info so they appear in the
+  // shipped log file. CDP responses and other high-volume types stay
+  // silent here; their telemetry happens elsewhere.
+  if (t === 'subscribe' || t === 'unsubscribe' || t === 'list_browser_jobs' || t === 'watch_agent_job') {
+    log.info(`[WebSocket] sendWsMessage(${t}) — ${isOpen ? 'sent' : 'queued'}`);
+  }
+
+  if (isOpen) {
+    ws!.send(JSON.stringify(msg));
   } else {
     log.debug(`[WebSocket] sendWsMessage — WS not open, queuing: ${t ?? '<unknown>'}`);
     sendQueue.push(msg);
@@ -61,24 +69,29 @@ export function onWsServerMessage(listener: ServerMessageListener): () => void {
 export function connectWebSocket(token: string): void {
   log.info(`[WebSocket] connectWebSocket entry — incoming: ${tokenPrefix(token)}, stored: ${tokenPrefix(currentToken)}`);
 
-  // IF ALREADY CONNECTED, DO NOT CHURN THE OPEN CONNECTION.
-  // The server's JWT check runs ONLY at registration, so the already-open WS
-  // is still valid even if the server token has since refreshed. We must not
-  // tear down a healthy connection just because a new token arrived.
+  // IF ALREADY CONNECTED OR HANDSHAKING, DO NOT OPEN A SECOND WS.
   //
-  // BUT: we MUST update the stored `currentToken` so that if the WS later
-  // closes and the reconnect handler fires, it reconnects with a fresh token
-  // instead of the stale one that was valid at register time. Not updating
-  // here caused latent "Invalid token" reconnect failures after the webapp
-  // refreshed its session — see the PHASE4 debug logs.
+  // OPEN: the server's JWT check runs ONLY at registration, so the already-
+  // open WS is still valid even if the token has since refreshed. Tearing it
+  // down on every auth state change would churn the connection.
   //
-  // APPROVED BY OWNER: only the stored-token update is new here. The original
-  // "don't churn open connection" invariant is preserved.
-  if (ws && ws.readyState === WebSocket.OPEN) {
+  // CONNECTING: the webapp's `electron-auth-bridge` can fire `sendAuthToken`
+  // twice within a few ms during initial hydration (e.g. INITIAL_SESSION
+  // followed immediately by a visibility-driven refresh). The first call
+  // opens WS1; the second arrives while WS1 is still in CONNECTING state.
+  // Without this gate the second call falls through and runs `ws = new
+  // WebSocket(...)`, clobbering the ref. WS1's `open` handler then fires
+  // and tries `ws!.send(register)` — but `ws` now points to WS2 which is
+  // also CONNECTING — and crashes with `WebSocket is not open: readyState 0`.
+  //
+  // We MUST update the stored `currentToken` either way so the reconnect
+  // path uses the freshest token rather than the one valid at register time.
+  if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
     const tokensMatch = token === currentToken;
-    log.warn(`[WebSocket] SKIP already-connected — tokens_match: ${tokensMatch}, connection preserved`);
+    const stateLabel = ws.readyState === WebSocket.CONNECTING ? 'connecting' : 'open';
+    log.warn(`[WebSocket] SKIP already-${stateLabel} — tokens_match: ${tokensMatch}, connection preserved`);
     if (!tokensMatch) {
-      log.info(`[WebSocket] Updating stored token in-place — old: ${tokenPrefix(currentToken)}, new: ${tokenPrefix(token)} (open WS unchanged, reconnect will use new token)`);
+      log.info(`[WebSocket] Updating stored token in-place — old: ${tokenPrefix(currentToken)}, new: ${tokenPrefix(token)} (existing WS unchanged, reconnect will use new token)`);
       currentToken = token;
     }
     return;

@@ -4,13 +4,13 @@ import { IpcChannel } from '../types/ipc.types';
 import { getConfig, setConfig } from './config';
 import { handleAuthToken } from './auth';
 import { sendStopAutomation } from './websocket-client';
+import { closeBrowserJob } from './http-client';
 import {
   showSession,
-  showPlaceholder,
   destroySession,
   getSessionCount,
   isAtCapacity,
-  navigateSession,
+  showOrNavigateSession,
   hasTailorView,
 } from './panels';
 import { setActionBarHeight } from './windows';
@@ -24,7 +24,7 @@ export function registerIpcHandlers(): void {
   // defaults to '__webapp__' for backwards-compatible callers.
   ipcMain.handle(IpcChannel.PANEL_NAVIGATE, async (_event: IpcMainInvokeEvent, args: { url: string; sessionId?: string }) => {
     const sid = args.sessionId ?? '__webapp__';
-    await navigateSession(sid, args.url);
+    await showOrNavigateSession(sid, args.url);
   });
 
   ipcMain.handle(IpcChannel.PANEL_SET_BAR_HEIGHT, async (_event: IpcMainInvokeEvent, args: { height: number }) => {
@@ -52,6 +52,11 @@ export function registerIpcHandlers(): void {
     sendStopAutomation(args.jobId);
   });
 
+  ipcMain.handle(IpcChannel.BROWSER_CLOSE, async (_event: IpcMainInvokeEvent, args: { jobId: string }) => {
+    log.info('[IPC] Close session — job:', args.jobId);
+    await closeBrowserJob(args.jobId);
+  });
+
   // Session lifecycle
   ipcMain.handle(IpcChannel.SESSION_SHOW, async (_event: IpcMainInvokeEvent, args: { sessionId: string }) => {
     return showSession(args.sessionId);
@@ -62,10 +67,6 @@ export function registerIpcHandlers(): void {
       return showSession(args.sessionId);
     }
     return false;
-  });
-
-  ipcMain.handle(IpcChannel.SESSION_SHOW_PLACEHOLDER, async () => {
-    showPlaceholder();
   });
 
   ipcMain.handle(IpcChannel.SESSION_DESTROY, async (_event: IpcMainInvokeEvent, args: { sessionId: string }) => {

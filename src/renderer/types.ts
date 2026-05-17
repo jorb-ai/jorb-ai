@@ -56,6 +56,7 @@ declare global {
       };
       browser: {
         stop: (jobId: string) => Promise<void>;
+        close: (jobId: string) => Promise<void>;
       };
       panel: {
         navigate: (url: string, sessionId?: string) => Promise<void>;
@@ -64,9 +65,9 @@ declare global {
       session: {
         show: (sessionId: string) => Promise<boolean>;
         showTailor: (sessionId: string) => Promise<boolean>;
-        showPlaceholder: () => Promise<void>;
         destroy: (sessionId: string) => Promise<void>;
         status: () => Promise<{ count: number; atCapacity: boolean }>;
+        onActiveChanged: (callback: (sessionId: string) => void) => () => void;
       };
       rpc: {
         request: (msg: unknown) => Promise<void>;

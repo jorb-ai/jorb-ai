@@ -1,7 +1,7 @@
 /**
- * Design tokens. Mirror finbro.me's palette:
+ * Design tokens. Mirror web-app's palette:
  *  - Pure white surfaces (no warm tints)
- *  - Tailwind-aligned neutral gray scale (matches what finbro.me components
+ *  - Tailwind-aligned neutral gray scale (matches what web-app components
  *    actually reach for — `bg-gray-100`, `border-gray-300`, `text-gray-500`)
  *  - Single primary accent (#290E99) reserved for "act now" signals
  *  - Semantic colors used only on small marks / icons
@@ -21,7 +21,7 @@ export const colors = {
   primarySoft:   'rgba(41, 14, 153, 0.08)',
   primaryHover:  'rgba(41, 14, 153, 0.14)',
 
-  // Neutrals (Tailwind gray-N, matching finbro.me usage)
+  // Neutrals (Tailwind gray-N, matching web-app usage)
   white:         '#FFFFFF',
   gray50:        '#F9FAFB',
   gray100:       '#F3F4F6',   // hover / active row background

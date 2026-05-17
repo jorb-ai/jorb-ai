@@ -1,5 +1,15 @@
 # Desktop App — CLAUDE.md
 
+## 60-Second Briefing
+
+- **Identity:** Electron desktop app that automates job applications via Chrome DevTools Protocol. A **dumb terminal** — zero business logic, zero direct Supabase, zero Realtime.
+- **Stack:** Electron + TypeScript + React renderer (Vite HMR). Single BrowserWindow with a floating sidebar + adaptive action bar over flush-white middle panel.
+- **Role:** Layer 1 shell. All intelligence lives in `web-api/` (Python brain). The embedded `web-app` renders inside BrowserView as Layer 2 (peer app). Communication is a SINGLE WebSocket — CDP, navigate, file sync, panel switch, and pubsub data all ride it.
+- **Critical contract:** `MAX_BROWSER_JOB_SESSIONS` here MUST equal `MAX_CONCURRENT_BROWSER_JOBS` in `web-api/finbroapi/src/browser_worker/main.py` (see `workstreams/browser/contracts.md` C9).
+- **Next read:** `workstreams/browser/` (workstream.md → architecture.md → handoff.md). This file is the visual-language + source-structure reference; full system architecture lives in the workstream.
+
+---
+
 ## Branch Policy
 
 Work on `main` only. No feature branches. Commits land directly on `main`
@@ -15,80 +25,149 @@ lives in `web-api/`. The shell executes CDP commands, renders the
 browser, and streams activity over a single WebSocket.
 
 For the full system architecture, read
-`jorb.ai/app/workstreams/browser/`:
+`jorb.ai/workstreams/browser/`:
 
-- `CLAUDE.md` — entry point + current invariants
-- `PLAN.md` — system architecture
-- `FILES.md` — exhaustive file map across all three repos
-- `CONTRACTS.md` — cross-repo couplings (read before any cross-repo edit)
-- `QA.md` — architectural decisions + rationale
+- `workstream.md` — entry point + current invariants
+- `architecture.md` — system architecture
+- `files.md` — exhaustive file map across all three repos
+- `contracts.md` — cross-repo couplings (read before any cross-repo edit)
+- `qa.md` — architectural decisions + rationale
 
-## Architecture (Phase 5 — two-panel)
+## Architecture (Phase 5.2 — white-on-white, JorbHeader, gleam-sweep)
 
-Two-panel layout inside one BrowserWindow. The right chat-feed panel is
-gone; all observability + intervention signals live in the adaptive
-action bar above the browser area.
+One BrowserWindow with a floating sidebar over a flush middle. The
+sidebar is a 180px frosted-glass card; the middle panel is full-bleed
+white; the window canvas is solid white so the surface reads as one
+continuous space. The action bar above the browser is HIDDEN on idle
+and on system tabs (the BrowserView reflows to the top of the middle
+panel); it appears only when an agent session is the active tab, and
+when expanded it renders the JorbHeader (mascot video + speech bubble).
 
 Dimensions:
 
-- LEFT sidebar = **200px** (fixed, +11% wider than Phase-4 to mirror finbro.me density)
-- Middle action bar = **44px collapsed / 96px expanded** (variable)
-- Browser area fills the remaining middle space
+- Window background = solid white (#FFFFFF)
+- LEFT sidebar zone = **190px** (180px frosted-glass card + 6px L/T/B gutter + 4px R gutter, 14px radius, `backdrop-filter: blur(24px) saturate(180%)`, `rgba(255,255,255,0.72)` fill, elevated drop shadow + 1px subtle border for white-on-white separation)
+- Middle action bar = **0 hidden / 44 collapsed / 96 expanded** (variable)
+- Browser area fills the rest
 
 ```
-┌──────────────┬───────────────────────────────────────────────────────────┐
-│              │  ┌─────────────────────────────────────────────────────┐  │
-│  LEFT 200px  │  │  Action Bar — 44px collapsed / 96px expanded         │  │
-│              │  └─────────────────────────────────────────────────────┘  │
-│  Sessions    │                                                           │
-│  (WS pubsub) │                   BROWSER (flex fills)                    │
-│              │            viewA (portal) / viewB (tailor) /              │
-│              │            SessionPlaceholder card                        │
-│              │                                                           │
-└──────────────┴───────────────────────────────────────────────────────────┘
+┌─── window (white) ────────────────────────────────────────────────────┐
+│ ┌──────────┐                                                          │
+│ │          │  ┌── Action Bar (0 / 44 / 96 JorbHeader) ───────────────┐│
+│ │ jorb.ai  │  ├──────────────────────────────────────────────────────┤│
+│ │          │  │                                                      ││
+│ │ Sessions │  │              BROWSER (flex fills)                    ││
+│ │ (WS pub) │  │       viewA (portal) / viewB (tailor)                ││
+│ │ ⌁ run    │  │                                                      ││
+│ └──────────┘  └──────────────────────────────────────────────────────┘│
+└───────────────────────────────────────────────────────────────────────┘
 ```
 
-Action-bar state machine (eight states, two heights):
+`⌁` = subtle gleaming-purple sweep on a running session row (CSS-only,
+animation: gleam-sweep, 2.4s loop, signals "agent is working here").
+
+Action-bar state machine (seven states, three heights):
 
 | Active tab | Height | Content |
 |---|---|---|
-| `__webapp__` / `__gmail__` / `__outlook__` | 44px | Breadcrumb |
-| `queued` agent | 44px | Title + "Waiting for worker capacity" |
-| `running` agent | 96px | 3-line streaming strip |
-| `running` + needs_review | 96px | 3-line strip, primary-accent left rail |
-| `completed` / `failed` / `stopped` | 44px | Title + single-line status |
+| idle / `__webapp__` / `__gmail__` / `__outlook__` | **0** | Hidden — BrowserView fills the middle panel top-to-bottom. |
+| `queued` agent | 44 | Title + "Waiting for worker capacity" |
+| `running` agent | 96 | JorbHeader: 60px mascot video + speech bubble (latest agent message) + Stop button |
+| `running` + needs_review | 96 | Same JorbHeader, primary-accent 3px left rail, "review and approve" copy in the bubble |
+| `completed` / `failed` / `stopped` | 44 | Title + single-line status |
 
 Renderer notifies main of the current bar height via
 `window.Finbro.panel.setBarHeight(h)`; `windows.ts`'s `setActionBarHeight`
-re-flows `BrowserView` bounds so the browser area stays aligned.
+re-flows `BrowserView` bounds whenever the bar shows / hides / toggles
+between collapsed and expanded.
 
-When the active session has no BrowserView attached (queued or
-terminal-past-grace), renderer calls `window.Finbro.session.showPlaceholder()`
-and `panels.ts` detaches every view so the HTML `SessionPlaceholder`
-card becomes visible in the middle panel.
+**Active-session sync (Phase 5.2).** When the worker auto-jumps to a
+session via the `navigate` WS command, `panels.ts:showSession` fires
+`session:active-changed` over IPC. The renderer's
+`window.Finbro.session.onActiveChanged(cb)` listener mirrors that into
+`activeJobId` so the sidebar row gets the active pill without the user
+having to click.
 
 ## Visual Language
 
-Mirrors the `finbro.me` webapp's look-and-feel so the desktop shell and
+Mirrors the `web-app` webapp's look-and-feel so the desktop shell and
 the webapp that runs inside its BrowserViews feel like one product.
 
 - **Typography**: system font stack
   (`-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif`) —
-  same as `finbro.me/tailwind.config.ts`. No web fonts, no Google Fonts
-  CDN, no CSP widening.
-- **Color**: single-accent system. `primary` = #290E99 reserved for
-  "act now" signals (active-session indicator, needs-attention dot,
-  approve state). Neutrals are a Tailwind-aligned gray scale
-  (`gray-50`…`gray-900`) matching `finbro.me`'s actual usage. Semantic
-  `success` / `warning` / `danger` used only on small marks / icons.
-- **Chrome**: pure white surfaces, 1px `gray-300` hairline borders,
-  `shadow-sm` on the sidebar, `rounded-lg` (8px) on interactive
-  elements — mirrors `finbro.me`'s shadcn-on-Tailwind chrome.
+  same as `web-app/tailwind.config.ts`. No web fonts, no Google Fonts
+  CDN.
+- **Color**: single-accent system. `primary` = #290E99 (`finbro-purple`
+  in the webapp) reserved for "act now" signals: needs-attention
+  breathing dot, agent-live dot, the gleaming sweep on running session
+  rows, the JorbHeader speech bubble, the `needs_review` action-bar
+  left rail. NOT used for plain active-row state. Neutrals are a
+  Tailwind-aligned gray scale (`gray-50`…`gray-900`) matching
+  `web-app`'s actual usage. Semantic `success` / `warning` / `danger`
+  used only on small marks / icons + faint ambient tints (~7%) on
+  completed / failed session rows.
+- **Chrome (Phase 5.2)**: solid white window canvas. The sidebar is a
+  frosted-glass card (`rgba(255,255,255,0.72)` over `backdrop-filter:
+  blur(24px) saturate(180%)`) with an inset white-highlight + an
+  elevated drop shadow + a soft 1px border so it reads as a floating
+  object on white rather than a contrasting zone. Tight gutter
+  (6px L/T/B + 4px R) — almost no gray space. Middle panel is
+  full-bleed white. Interactive rows use `rounded-md` (6px) and 28px
+  height for compact density.
+- **Active state**: subtle pill — `gray-100` fill + 1px `gray-200`
+  inset ring + `font-medium` + `gray-900` text. Hover is `gray-50`
+  fill. The two states share a fill family so hover feels like a
+  precursor to active, not a competing treatment.
+- **Running state (Phase 5.2)**: gleaming sweep — a translucent primary
+  gradient swept L→R over the row at ~2.4s ease-in-out infinite. Layers
+  on top of the active pill if the row is also active. Stops the
+  moment the row transitions to needs_attention (which has its own
+  breathing dot signal) or any terminal status.
 - **Brand**: `logo_wordmark.png` image asset in the sidebar header
-  (64px container, logo 32px tall), not a text brand mark. Matches
-  `finbro.me/src/components/Logo.tsx`.
-- **Motion**: breathe, not flash. Live dot pulses at ~1.8s. Current-action
-  line crossfades (200ms). No typewriter, no spinners, no progress bars.
+  (48px container, logo 20px tall). No border-bottom — breathing space
+  below carries the separation.
+- **Motion**: breathe, not flash. Live dot pulses at ~1.8s. JorbHeader
+  speech bubble re-fires `animate-jorb-enter` (0.35s fade-up) on each
+  new agent message; ambient halo runs `animate-jorb-glow` (3.5s
+  ease-in-out infinite) while running. No typewriter, no spinners.
+
+## Browser Parity
+
+The shell is a browser at heart — tabs, switching, loading, closing. For
+any behavior it shares with a real browser, match the browser convention.
+Users arrive with deep Chrome/Safari muscle memory; honour it, never fight it.
+
+- Switching tabs is a z-order change — instant, never a reload. The tab
+  keeps its scroll, sign-in, and form state (`showOrNavigateSession`).
+- A tab loads once, on first open; after that it persists.
+- Closing a tab is immediate and irreversible, and the close affordance is
+  always reachable — every tab, every state.
+- A tab that is loading, or that failed to load, says so — never a blank
+  or a stale page.
+
+Not a goal to become a general-purpose browser (no address bar, no
+bookmarks — the app doesn't need them). A constraint: for the browser-like
+things the shell does do, do them the browser way.
+
+## JorbHeader
+
+The action-bar narrative element when an agent session is running. Ported
+from `web-app/src/components/ui/agent/JorbHeader.tsx` to
+`src/renderer/components/JorbHeader.tsx` as plain React + plain CSS
+(no Tailwind).
+
+- 60×60px mascot video on the left, alpha-keyed via the global
+  `<filter id="jorb-alpha">` declared in `index.html` (luma-weighted
+  `feColorMatrix` keys out the video's near-black background).
+- Speech bubble on the right — primary-tinted background, primary-tinted
+  border, "Jorb" eyebrow + the latest agent message body.
+- 8 mascot videos in `src/renderer/assets/videos/jorb1.webm` …
+  `jorb8.webm`. Picker reshuffles a deck so consecutive plays don't
+  repeat. Hover plays the picked video once.
+- Wired off the active job's events: speech derives from the latest
+  `tool_call`'s human-readable mapping (`config.py:TOOL_NAME_MAPPING`),
+  the latest `status` / `paused_for_tailor` / `error` message, or a
+  default greeting on cold start.
 
 All tokens live in `src/renderer/lib/colors.ts` with CSS-variable mirrors
 in `src/renderer/styles.css`. No product-specific names (no "brand",
@@ -104,11 +183,10 @@ src/
 │   ├── config.ts                # electron-store config
 │   ├── windows.ts               # Two-panel bounds. setActionBarHeight(h)
 │   │                            # re-flows BrowserView bounds when the
-│   │                            # renderer bar toggles between 44/96.
+│   │                            # renderer bar toggles between 0/44/96.
 │   ├── panels.ts                # Multi-session BrowserView manager.
-│   │                            # Phase 5: adds showPlaceholder() which
-│   │                            # detaches every view so the HTML
-│   │                            # SessionPlaceholder card is visible.
+│   │                            # Phase 5.2: showSession fires
+│   │                            # session:active-changed IPC.
 │   ├── websocket-client.ts      # Single WS. CDP, navigate, file sync,
 │   │                            # file_sync_trigger, panel_switch,
 │   │                            # queue+flush, auto-resubscribe.
@@ -119,8 +197,9 @@ src/
 │   │                            # ack for already-local files.
 │   ├── ipc.ts                   # IPC handlers: config, auth, panel
 │   │                            # navigate / set-bar-height, browser:stop,
-│   │                            # session show / show-tailor /
-│   │                            # show-placeholder / destroy / status
+│   │                            # session show / show-tailor / destroy /
+│   │                            # status. Phase 5.2: registers
+│   │                            # session:active-changed channel name.
 │   └── rpc-bridge.ts            # Renderer rpc.ts ↔ WS bridge with
 │                                # inbound (3 types) and outbound
 │                                # (6 push events + error) allowlists.
@@ -134,33 +213,34 @@ src/
 │   ├── app/
 │   │   ├── App.tsx              # Two-panel shell. Tracks activeJobId
 │   │   │                        # (agent session) vs activeNavId (system
-│   │   │                        # tab) as mutually exclusive. 30s grace
-│   │   │                        # timer → placeholder-swap on active
-│   │   │                        # session's view destruction.
+│   │   │                        # tab) as mutually exclusive. Phase 5.2:
+│   │   │                        # listens to session.onActiveChanged.
 │   │   ├── index.tsx            # ReactDOM entry
-│   │   └── index.html           # Strict CSP: default-src + connect-src
-│   │                            # 'self', no external hosts. System font
-│   │                            # stack via styles.css.
+│   │   └── index.html           # CSP: default-src + connect-src 'self'
+│   │                            # + ws://localhost:5273 http://localhost:5273
+│   │                            # for Vite HMR. media-src 'self' for
+│   │                            # JorbHeader videos. Global SVG
+│   │                            # <filter id="jorb-alpha"> definition.
 │   ├── panels/
 │   │   ├── session-list/        # Sidebar
-│   │   └── action-bar/          # Adaptive action bar
-│   ├── components/              # SessionRow, SessionPlaceholder
+│   │   └── action-bar/          # Adaptive action bar (renders JorbHeader
+│   │                            # when expanded)
+│   ├── components/              # SessionRow, JorbHeader
 │   ├── lib/
 │   │   ├── rpc.ts               # WS-backed data layer. UUID correlation,
 │   │   │                        # 10s timeout. listBrowserJobs /
 │   │   │                        # subscribeBrowserJobs / watchAgentJob.
 │   │   └── colors.ts            # Design tokens (generic names)
-│   ├── assets/                  # logo_wordmark.png (rendered in the
-│   │                            # sidebar header) and logo_square.png
+│   ├── assets/                  # logos/ + videos/jorb1..8.webm (Phase 5.2
+│   │                            # JorbHeader mascot videos)
 │   ├── types.ts                 # BrowserJobRow, BrowserEvent,
 │   │                            # SessionDisplayStatus, Window.Finbro decl
 │   └── styles.css               # Full design system in CSS variables
 │
 └── types/                       # Shared types (main + preload)
     ├── config.types.ts          # AppConfig: { debugMode, automationServerUrl }
-    └── ipc.types.ts             # IpcChannel enum (incl. Phase 5
-                                 # SESSION_SHOW_PLACEHOLDER and
-                                 # PANEL_SET_BAR_HEIGHT)
+    └── ipc.types.ts             # IpcChannel enum (PANEL_SET_BAR_HEIGHT;
+                                 # Phase 5.2 SESSION_ACTIVE_CHANGED)
 ```
 
 **Deleted in Phase 5**: `panels/chat-feed/` (entire directory),
@@ -169,6 +249,13 @@ src/
 deleted in Phase 4 Spec 4.6. Also removed in Phase 5:
 `panel.resize` IPC + preload surface, the right-panel width state in
 `windows.ts`, and the resize-handle JSX in `App.tsx`.
+
+**Removed in Phase 5.2**: from `panels/action-bar/ActionBar.tsx`:
+the 3-line streaming strip (`deriveTrail`, the trail row JSX), the
+elapsed counter (`formatElapsed`, `ELAPSED_VISIBLE_MS`), the
+"Deciding next step" thinking state (`THINKING_THRESHOLD_MS`,
+`thinking-dot` keyframe + JSX), and the breadcrumb-only collapsed
+mode for system tabs (now hidden — bar height 0).
 
 ## Key Conventions
 
@@ -214,7 +301,7 @@ pubsub live data — rides on that connection.
 
 **Supabase Realtime is NOT used by this renderer.** All data (list + live
 updates for `browser_jobs` and `agent_jobs`) flows over the WS via
-`rpc-bridge.ts` + `rpc.ts`. See `workstreams/browser/QA.md` R22 for why.
+`rpc-bridge.ts` + `rpc.ts`. See `workstreams/browser/qa.md` R22 for why.
 
 ## Rules
 
@@ -229,7 +316,7 @@ updates for `browser_jobs` and `agent_jobs`) flows over the WS via
    main renderer process.
 6. `MAX_BROWSER_JOB_SESSIONS = 5` must equal `MAX_CONCURRENT_BROWSER_JOBS`
    in `web-api/finbroapi/src/browser_worker/main.py`
-   (see `workstreams/browser/CONTRACTS.md` C9).
+   (see `workstreams/browser/contracts.md` C9).
 7. Do not reintroduce a right panel. Phase 5 was a deliberate removal —
    intervention signals live in the action-bar transform + sidebar
    accent dot, and the Approve affordance lives inside the tailor page
@@ -241,8 +328,28 @@ updates for `browser_jobs` and `agent_jobs`) flows over the WS via
 
 ```bash
 npm install
-npm run dev        # Build + launch Electron
-npm run build      # Build only (tsc + vite)
+npm run dev        # Vite dev server (HMR for renderer) + Electron pointing at it.
+                   # Renderer changes (CSS, .tsx) update instantly with no restart.
+                   # Main-process changes still require kill-and-rerun.
+npm run build      # Production build (tsc main + vite build renderer)
+npm run build:once # One-shot build + launch Electron (the old `dev` behavior)
 npm run package    # Build + package (no distribute)
 npm run dist       # Build + distribute (.dmg/.exe)
 ```
+
+### How the dev loop is wired
+
+`vite.config.ts` runs the dev server on port 5273 (strict). `windows.ts`
+checks for `VITE_DEV_SERVER_URL` and, if set, calls `loadURL` against
+the dev server instead of `loadFile` against the built `dist/renderer/`.
+The `dev` script uses `concurrently` to run Vite + Electron in the same
+terminal, with `wait-on tcp:5273` so Electron only launches once Vite is
+ready. Closing the Electron window kills the whole script (`--kill-others`).
+
+CSS is imported as a module from `index.tsx` (`import '../styles.css'`),
+which is what enables Vite's HMR for stylesheet changes — edits to
+`styles.css` apply without a page reload. The `<link>` tag was dropped.
+
+The CSP in `index.html` has `ws://localhost:5273 http://localhost:5273`
+in `connect-src` so Vite's HMR WebSocket can connect during dev. These
+hosts are local-only so the production build inheriting them is harmless.

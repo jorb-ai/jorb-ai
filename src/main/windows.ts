@@ -7,12 +7,17 @@ import { setMainWindowRef } from './auth';
 
 let mainWindow: BrowserWindow | null = null;
 
-// Sidebar is fixed; action bar is variable (44px system tab / 96px running
-// agent session). The renderer notifies the main process of the current
-// bar height via IPC so BrowserView bounds stay correct. Must stay in
-// sync with `--sidebar-width` in renderer/styles.css.
-const SIDEBAR_WIDTH = 200;
-const DEFAULT_BAR_HEIGHT = 44;
+// Sidebar zone is 190px: a 180px floating glass card with a tight gutter
+// (6px L/T/B + 4px R). The middle panel butts against the card's right
+// edge with just enough breathing room for the card's drop shadow.
+// Action bar is variable: 0 when no agent session is active (idle /
+// system tab), 44 collapsed (queued / completed / failed / stopped),
+// 96 expanded (running / needs_review — JorbHeader). Renderer pushes
+// height changes via `panel:set-bar-height` so BrowserView bounds
+// re-flow. Must stay in sync with `--sidebar-zone-width` in
+// renderer/styles.css.
+const SIDEBAR_ZONE_WIDTH = 190;
+const DEFAULT_BAR_HEIGHT = 0;
 
 let currentBarHeight = DEFAULT_BAR_HEIGHT;
 
@@ -44,8 +49,16 @@ export async function createMainWindow(): Promise<BrowserWindow> {
     mainWindow?.show();
   });
 
-  const rendererPath = path.join(__dirname, '../renderer/index.html');
-  await mainWindow.loadFile(rendererPath);
+  // Dev: load from Vite's dev server (HMR for renderer code + CSS).
+  // Prod: load the built file. The env var is set by `npm run dev`.
+  const devUrl = process.env.VITE_DEV_SERVER_URL;
+  if (devUrl) {
+    log.info(`[Windows] Loading renderer from Vite dev server: ${devUrl}`);
+    await mainWindow.loadURL(devUrl);
+  } else {
+    const rendererPath = path.join(__dirname, '../renderer/index.html');
+    await mainWindow.loadFile(rendererPath);
+  }
 
   const [cw, ch] = mainWindow.getContentSize();
   initPanels(mainWindow, computeBrowserViewBounds(cw, ch));
@@ -77,18 +90,20 @@ export async function createMainWindow(): Promise<BrowserWindow> {
 
 function computeBrowserViewBounds(windowWidth: number, windowHeight: number) {
   return {
-    x: SIDEBAR_WIDTH,
+    x: SIDEBAR_ZONE_WIDTH,
     y: currentBarHeight,
-    width: windowWidth - SIDEBAR_WIDTH,
+    width: windowWidth - SIDEBAR_ZONE_WIDTH,
     height: windowHeight - currentBarHeight,
   };
 }
 
 /**
- * Called by ipc when the renderer's action bar changes height
- * (44px collapsed / 96px expanded). We store the new value and re-flow
- * all BrowserViews against it so the browser area lines up with whatever
- * the bar is rendering.
+ * Called by ipc when the renderer's action bar changes height:
+ *   0  — hidden (idle / system tab)
+ *   44 — collapsed (queued / completed / failed / stopped)
+ *   96 — expanded (running / needs_review)
+ * We store the new value and re-flow all BrowserViews so the browser
+ * area lines up flush with whatever chrome the renderer is drawing.
  */
 export function setActionBarHeight(height: number): void {
   if (height === currentBarHeight) return;

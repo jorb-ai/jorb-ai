@@ -5,7 +5,7 @@
  *
  * Replaces renderer/lib/supabase.ts. The renderer never imports
  * @supabase/supabase-js; all queries and live updates flow through this
- * module. See workstreams/browser/PHASE4.md Spec 4.3 for the design doc.
+ * module. See workstreams/browser/history/PHASE4.md Spec 4.3 for the design doc.
  */
 
 import type { BrowserJobRow } from '../types';
@@ -52,9 +52,18 @@ window.Finbro.rpc?.onEvent((event: any) => {
   // Server-push events (no matching id)
   switch (event?.type) {
     case 'browser_job_inserted':
+      console.log(
+        `[rpc] browser_job_inserted received — id: ${event.row?.id?.slice(0, 8)}, callbacks: ${jobInsertCallbacks.size}`,
+      );
+      if (jobInsertCallbacks.size === 0) {
+        console.warn('[rpc] browser_job_inserted DROPPED — no callbacks registered');
+      }
       jobInsertCallbacks.forEach((cb) => cb(event.row));
       break;
     case 'browser_job_updated':
+      console.log(
+        `[rpc] browser_job_updated received — id: ${event.row?.id?.slice(0, 8)}, status: ${event.row?.status}, callbacks: ${jobUpdateCallbacks.size}`,
+      );
       jobUpdateCallbacks.forEach((cb) => cb(event.row));
       break;
     case 'agent_job_updated': {
@@ -64,6 +73,9 @@ window.Finbro.rpc?.onEvent((event: any) => {
       }
       break;
     }
+    case 'subscribed':
+      console.log('[rpc] server confirmed subscription');
+      break;
     default:
       // Ignore CDP/navigate/file-sync/panel-switch and anything else
       // the main-process dispatcher owns.
@@ -122,11 +134,17 @@ export function subscribeBrowserJobs(
 ): () => void {
   jobInsertCallbacks.add(onInsert);
   jobUpdateCallbacks.add(onUpdate);
+  console.log(
+    `[rpc] subscribeBrowserJobs registered — insertCbs: ${jobInsertCallbacks.size}, updateCbs: ${jobUpdateCallbacks.size}`,
+  );
   // One-way idempotent command — no correlation needed.
   window.Finbro.rpc.subscribe();
   return () => {
     jobInsertCallbacks.delete(onInsert);
     jobUpdateCallbacks.delete(onUpdate);
+    console.log(
+      `[rpc] subscribeBrowserJobs unsubscribed — insertCbs: ${jobInsertCallbacks.size}, updateCbs: ${jobUpdateCallbacks.size}`,
+    );
   };
 }
 

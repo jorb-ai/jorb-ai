@@ -7,14 +7,27 @@
     CSP: connect-src 'self' enforces the Phase-4 dumb-terminal invariant —
     the renderer cannot reach any server except its own. All data goes
     through the main-process WebSocket. No external font/stylesheet/image
-    hosts. The desktop app uses the host OS's system font stack,
-    mirroring finbro.me.
+    hosts. The localhost:5273 allowance is for Vite's dev-server HMR
+    WebSocket — local-only, harmless in prod. media-src 'self' (Phase 5.2)
+    permits the JorbHeader mascot videos bundled under assets/videos/.
   -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self'; connect-src 'self' ws://localhost:5273 http://localhost:5273">
   <title>jorb.ai</title>
-  <link rel="stylesheet" href="../styles.css">
 </head>
 <body>
+  <!--
+    Global SVG filter — keys out the dark video background on JorbHeader's
+    <video> via a luma-weighted feColorMatrix. Mirrors web-app/index.html.
+    Lives once at the document root so every JorbHeader instance can
+    reference it via filter: url(#jorb-alpha).
+  -->
+  <svg width="0" height="0" style="position:absolute;pointer-events:none" aria-hidden="true">
+    <defs>
+      <filter id="jorb-alpha" color-interpolation-filters="sRGB">
+        <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  6 6 6 0 -0.08"/>
+      </filter>
+    </defs>
+  </svg>
   <div id="root"></div>
   <script type="module" src="./index.tsx"></script>
 </body>

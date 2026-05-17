@@ -7,7 +7,7 @@ interface SessionPlaceholderProps {
 
 function formatJobTitle(job: BrowserJobRow): string {
   const role = job.title || `Job ${job.job_id.slice(0, 6)}`;
-  return job.company ? `${job.company} \u2014 ${role}` : role;
+  return job.company ? `${job.company} — ${role}` : role;
 }
 
 function relativeTime(iso: string | null | undefined): string {
@@ -24,13 +24,14 @@ function relativeTime(iso: string | null | undefined): string {
 }
 
 /**
- * Rendered in the middle panel when the active session has no BrowserView
- * attached — queued sessions (worker hasn't claimed yet) or terminal
- * sessions past the 30s grace period (BrowserView destroyed).
+ * Rendered in the middle panel when the selected session has no live
+ * BrowserView — a `queued` job the worker hasn't navigated yet, or a job
+ * from an earlier app run that this instance never opened a tab for.
  *
- * The main process is told to detach all BrowserViews via
- * `session.showPlaceholder()` so this card is actually visible rather
- * than occluded by an invisible Chromium surface.
+ * `panels.ts:showSession` returns `false` for such a session and detaches
+ * every BrowserView (placeholder mode), so this card is visible rather
+ * than occluded by an opaque Chromium surface. App.tsx renders it on the
+ * `false` return.
  */
 export const SessionPlaceholder: React.FC<SessionPlaceholderProps> = ({ job }) => {
   const status = job.status;
@@ -49,18 +50,18 @@ export const SessionPlaceholder: React.FC<SessionPlaceholderProps> = ({ job }) =
       eyebrowLabel = 'Queued';
       eyebrowClass = 'placeholder__eyebrow--queued';
       meta = 'Waiting for worker capacity';
-      body = 'Your session will open here the moment a worker claims it. You can keep browsing in the meantime \u2014 nothing is blocked.';
+      body = 'Your session will open here the moment a worker claims it. You can keep browsing in the meantime — nothing is blocked.';
       hint = 'Cap: 5 concurrent sessions';
       break;
     case 'completed':
-      eyebrowMark = <span className="placeholder__mark" aria-hidden>{'\u2713'}</span>;
+      eyebrowMark = <span className="placeholder__mark" aria-hidden>{'✓'}</span>;
       eyebrowLabel = 'Completed';
       eyebrowClass = 'placeholder__eyebrow--completed';
       meta = job.completed_at ? `Finished ${relativeTime(job.completed_at)}` : 'Finished';
-      body = 'The agent finished this application and the portal view has been released. Your tailored documents remain in your library.';
+      body = 'The agent finished this application. Any documents it tailored remain in your library.';
       break;
     case 'failed':
-      eyebrowMark = <span className="placeholder__mark" aria-hidden>{'\u0021'}</span>;
+      eyebrowMark = <span className="placeholder__mark" aria-hidden>{'!'}</span>;
       eyebrowLabel = 'Failed';
       eyebrowClass = 'placeholder__eyebrow--failed';
       meta = job.completed_at ? `Stopped ${relativeTime(job.completed_at)}` : 'Stopped';
@@ -69,18 +70,21 @@ export const SessionPlaceholder: React.FC<SessionPlaceholderProps> = ({ job }) =
         : 'The agent ran into an issue and the session has ended. You can retry from the webapp.';
       break;
     case 'stopped':
-      eyebrowMark = <span className="placeholder__mark" aria-hidden>{'\u25A0'}</span>;
+      eyebrowMark = <span className="placeholder__mark" aria-hidden>{'■'}</span>;
       eyebrowLabel = 'Stopped';
       eyebrowClass = 'placeholder__eyebrow--stopped';
       meta = job.completed_at ? `Stopped ${relativeTime(job.completed_at)}` : 'Stopped by you';
-      body = 'You stopped this session. The portal view has been released.';
+      body = 'You stopped this session.';
       break;
     case 'running':
     default:
-      // Should not normally render placeholder for running; guard just in case.
+      // A running job normally has a live tab. It won't here if the app
+      // was restarted mid-run — the BrowserView is gone and nothing
+      // re-creates it. Describe that orphaned case honestly rather than
+      // pretending the job is still spinning up.
       eyebrowLabel = 'Running';
-      meta = 'Starting up';
-      body = 'The agent is initializing. This view will swap to the portal in a moment.';
+      meta = 'No live view in this window';
+      body = "This application is running on the server, but its live view isn't open in this window — the app was likely restarted mid-job. Close the row to dismiss it here.";
       break;
   }
 
