@@ -32,11 +32,10 @@ function pickRandomJorbVideo(): string {
 
 interface JorbHeaderProps {
   speech: string;
-  variant?: 'default' | 'attention' | 'danger';
   trailing?: React.ReactNode;
 }
 
-export const JorbHeader: React.FC<JorbHeaderProps> = ({ speech, variant = 'default', trailing }) => {
+export const JorbHeader: React.FC<JorbHeaderProps> = ({ speech, trailing }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const playingRef = useRef(false);
   const videoSrc = useMemo(() => pickRandomJorbVideo(), []);
@@ -78,7 +77,7 @@ export const JorbHeader: React.FC<JorbHeaderProps> = ({ speech, variant = 'defau
       */}
       <div className="jorb-header__bubble-wrap">
         <div className="jorb-header__glow" aria-hidden />
-        <div className={`jorb-header__bubble jorb-header__bubble--${variant}`}>
+        <div className="jorb-header__bubble">
           <span className="jorb-header__eyebrow">Jorb</span>
           <p key={speech} className="jorb-header__speech jorb-header__speech--enter">{speech}</p>
         </div>

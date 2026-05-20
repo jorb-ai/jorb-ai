@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo } from 'react';
 import type { BrowserJobRow, BrowserEvent } from '../../types';
+import { deriveDisplayStatus } from '../../types';
 import { JorbHeader } from '../../components/JorbHeader';
 
 interface ActionBarProps {
@@ -7,189 +8,113 @@ interface ActionBarProps {
   onStop: (jobId: string) => void;
 }
 
+/*
+ * The bar is binary: hidden when no agent session is the active tab, or the
+ * 96px JorbHeader for every agent-session state. The old 44px collapsed
+ * strip is gone; one narrative element is reused across every state.
+ */
 type Mode =
-  | 'hidden'        // no active agent session — bar disappears
+  | 'hidden'
   | 'queued'
   | 'running'
-  | 'needs_review'
+  | 'needs_review'   // tailor_ready seen: the document is waiting on the user
   | 'completed'
   | 'failed'
   | 'stopped';
 
-const COLLAPSED_HEIGHT = 44;
-const EXPANDED_HEIGHT = 96;
+const BAR_HEIGHT = 96;
 
 /* ── Derivations ──────────────────────────────────────────────────── */
 
+/*
+ * One source of truth: the bar mode is the shared session display status
+ * (`deriveDisplayStatus`, also used by the sidebar), with `needs_attention`
+ * surfaced as `needs_review` plus a `hidden` case for no active job.
+ */
 function deriveMode(job: BrowserJobRow | null): Mode {
   if (!job) return 'hidden';
-  if (job.status === 'queued')    return 'queued';
-  if (job.status === 'completed') return 'completed';
-  if (job.status === 'failed')    return 'failed';
-  if (job.status === 'stopped')   return 'stopped';
-  const events = job.events || [];
-  let paused = 0, approved = 0;
-  for (const e of events) {
-    if (e.type === 'paused_for_tailor') paused++;
-    else if (e.type === 'tailor_approved') approved++;
-  }
-  return paused > approved ? 'needs_review' : 'running';
-}
-
-function formatJobTitle(job: BrowserJobRow): string {
-  const role = job.title || `Job ${job.job_id.slice(0, 6)}`;
-  return job.company ? `${job.company} — ${role}` : role;
+  const status = deriveDisplayStatus(job);
+  return status === 'needs_attention' ? 'needs_review' : status;
 }
 
 function stripTrailingDots(s: string): string {
   return s.replace(/[\s…]*\.{2,}\s*$/, '').replace(/\s*—\s*$/, '').trim();
 }
 
-interface Speech {
-  text: string;
-  variant: 'default' | 'attention' | 'danger';
+/** Doc type of the current tailor cycle, newest cycle wins. */
+function currentDocType(events: BrowserEvent[]): 'resume' | 'cover_letter' | null {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i];
+    if (e.type === 'tailor_approved' || e.type === 'resumed') break;
+    if (e.type === 'tailor_ready' || e.type === 'paused_for_tailor') {
+      return e.doc_type ?? null;
+    }
+  }
+  return null;
 }
 
-/**
- * The single line Jorb says in the speech bubble.
- *
- * Phase 5.2 collapses the old three-line strip (title / current action /
- * trail) into one user-visible message at a time. Priority order from
- * top to bottom — first matching wins.
+/*
+ * The single line Jorb says in the speech bubble. One JorbHeader carries
+ * every state (running narration, the approval ask, the terminal sign-off);
+ * the bubble itself never changes color, so the per-state signal lives on
+ * the sidebar row, not on Jorb.
  */
-function deriveSpeech(mode: Mode, job: BrowserJobRow): Speech {
+function deriveSpeech(mode: Mode, job: BrowserJobRow): string {
   const events: BrowserEvent[] = job.events || [];
 
-  if (mode === 'needs_review') {
-    let docType: 'resume' | 'cover_letter' | null = null;
-    for (let i = events.length - 1; i >= 0; i--) {
-      const e = events[i];
-      if (e.type === 'tailor_approved' || e.type === 'resumed') break;
-      if (e.type === 'paused_for_tailor') { docType = e.doc_type ?? null; break; }
+  switch (mode) {
+    case 'queued':
+      return "You're in the queue. I'll start as soon as a worker is free.";
+    case 'needs_review': {
+      const t = currentDocType(events);
+      const doc = t === 'resume' ? 'resume' : t === 'cover_letter' ? 'cover letter' : 'document';
+      return `Your ${doc} is ready. Review it and approve below to continue.`;
     }
-    const doc = docType === 'resume' ? 'resume' : docType === 'cover_letter' ? 'cover letter' : 'document';
-    return { text: `Your ${doc} is ready — review and approve to continue.`, variant: 'attention' };
+    case 'completed':
+      return "All done. I've submitted your application.";
+    case 'failed':
+      return "I ran into a problem and couldn't finish this application.";
+    case 'stopped':
+      return 'Stopped. Start it again whenever you are ready.';
+    case 'running':
+    default: {
+      const last = events[events.length - 1];
+      if (!last) return 'Booting up, opening the application page.';
+      return stripTrailingDots(last.message);
+    }
   }
-
-  const last = events[events.length - 1];
-  if (!last) {
-    return { text: 'Booting up — opening the application page.', variant: 'default' };
-  }
-  if (last.type === 'error') {
-    return { text: stripTrailingDots(last.message), variant: 'danger' };
-  }
-  return { text: stripTrailingDots(last.message), variant: 'default' };
-}
-
-function relativeTime(iso: string | null | undefined): string {
-  if (!iso) return '';
-  const diffMs = Date.now() - new Date(iso).getTime();
-  if (!Number.isFinite(diffMs) || diffMs < 0) return 'just now';
-  const mins = Math.floor(diffMs / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
 }
 
 /* ── Component ────────────────────────────────────────────────────── */
 
 export const ActionBar: React.FC<ActionBarProps> = ({ activeJob, onStop }) => {
   const mode = deriveMode(activeJob);
-  const expanded = mode === 'running' || mode === 'needs_review';
-  const attention = mode === 'needs_review';
 
-  // Tell main the current bar height every time it changes so
-  // BrowserView bounds re-flow and the browser area stays flush.
+  // Tell main the bar height so BrowserView bounds re-flow under it. The
+  // bar is binary now: 0 when hidden, 96 otherwise.
   useEffect(() => {
-    const h = mode === 'hidden' ? 0 : (expanded ? EXPANDED_HEIGHT : COLLAPSED_HEIGHT);
-    window.Finbro.panel.setBarHeight(h);
-  }, [mode, expanded]);
+    window.Finbro.panel.setBarHeight(mode === 'hidden' ? 0 : BAR_HEIGHT);
+  }, [mode]);
 
-  if (mode === 'hidden') return null;
-
-  const classes = [
-    'action-bar',
-    expanded ? 'action-bar--expanded' : '',
-    attention ? 'action-bar--attention' : '',
-  ].filter(Boolean).join(' ');
-
-  if (expanded && activeJob) {
-    return <ExpandedBar job={activeJob} mode={mode} onStop={onStop} classes={classes} />;
-  }
-  if (activeJob) {
-    return <CollapsedBar mode={mode} job={activeJob} classes={classes} />;
-  }
-  return null;
-};
-
-/* ── Collapsed (44px) — queued / completed / failed / stopped ─────── */
-
-const CollapsedBar: React.FC<{
-  mode: Mode;
-  job: BrowserJobRow;
-  classes: string;
-}> = ({ mode, job, classes }) => {
-  const breadcrumb = formatJobTitle(job);
-  let status: { text: string; variant: 'muted' | 'success' | 'danger' } | null = null;
-
-  if (mode === 'queued') {
-    status = { text: 'Waiting for worker capacity', variant: 'muted' };
-  } else if (mode === 'completed') {
-    const when = relativeTime(job.completed_at);
-    status = { text: `✓ Completed${when ? ` ${when}` : ''}`, variant: 'success' };
-  } else if (mode === 'failed') {
-    status = { text: `! ${job.error_message || 'Failed'}`, variant: 'danger' };
-  } else if (mode === 'stopped') {
-    status = { text: 'Stopped', variant: 'muted' };
-  }
-
-  return (
-    <div className={classes}>
-      <div className="action-bar__collapsed">
-        <span className="action-bar__breadcrumb">{breadcrumb}</span>
-        {status && <span className="action-bar__sep">{'·'}</span>}
-        {status && (
-          <span className={`action-bar__status-text action-bar__status-text--${status.variant}`}>
-            {status.text}
-          </span>
-        )}
-      </div>
-    </div>
+  const speech = useMemo(
+    () => (activeJob ? deriveSpeech(mode, activeJob) : ''),
+    [mode, activeJob],
   );
-};
 
-/* ── Expanded (96px) — JorbHeader ─────────────────────────────────── */
+  if (mode === 'hidden' || !activeJob) return null;
 
-const ExpandedBar: React.FC<{
-  job: BrowserJobRow;
-  mode: Mode;
-  onStop: (jobId: string) => void;
-  classes: string;
-}> = ({ job, mode, onStop, classes }) => {
-  const speech = useMemo(() => deriveSpeech(mode, job), [mode, job]);
-
-  const stopButton = (
-    <button className="action-bar__stop" onClick={() => onStop(job.id)}>
+  // Stop is offered only while the agent is mid-run or waiting on the user.
+  // Terminal and not-yet-started jobs have nothing to stop.
+  const canStop = mode === 'running' || mode === 'needs_review';
+  const trailing = canStop ? (
+    <button className="action-bar__stop" onClick={() => onStop(activeJob.id)}>
       Stop
     </button>
-  );
+  ) : undefined;
 
-  // No `key` here — re-keying the JorbHeader would re-roll the mascot
-  // every time Jorb says something new, which is visually jittery. The
-  // mascot picks once per mount; only the speech-bubble text re-animates
-  // (handled by an inner `key={speech}` inside JorbHeader).
   return (
-    <div className={classes}>
-      <div className="action-bar__expanded">
-        <JorbHeader
-          speech={speech.text}
-          variant={speech.variant}
-          trailing={stopButton}
-        />
-      </div>
+    <div className="action-bar">
+      <JorbHeader speech={speech} trailing={trailing} />
     </div>
   );
 };

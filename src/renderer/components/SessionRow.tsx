@@ -6,6 +6,7 @@ import { deriveDisplayStatus } from '../types';
 interface SessionRowProps {
   job: BrowserJobRow;
   isActive: boolean;
+  acknowledged: boolean;
   onClick: () => void;
   onClose: () => void;
 }
@@ -13,27 +14,34 @@ interface SessionRowProps {
 function formatLabel(job: BrowserJobRow): string {
   const role = job.title || `Job ${job.job_id.slice(0, 6)}`;
   const company = job.company;
-  // Company-first reads more naturally ("Stripe — Software Engineer") and
+  // Company-first reads more naturally ("Stripe · Software Engineer") and
   // matches how job listings are usually titled outside our own data model.
-  return company ? `${company} — ${role}` : role;
+  return company ? `${company} · ${role}` : role;
 }
 
-function modifierClass(status: SessionDisplayStatus): string {
+function modifierClass(status: SessionDisplayStatus, acknowledged: boolean): string {
   switch (status) {
     case 'queued':    return 'session-row--queued';
     case 'stopped':   return 'session-row--stopped';
-    case 'completed': return 'session-row--completed';
+    case 'completed':
+      // A finished application greets the user with a green tint. It holds
+      // while they have the row open and clears once they have seen the
+      // completed result and moved on (App.tsx `seenCompletedJobIds`).
+      return acknowledged ? '' : 'session-row--completed';
     case 'failed':    return 'session-row--failed';
-    case 'running':   return 'session-row--running';
     case 'needs_attention':
-      // Has its own breathing-dot signal; no gleam-sweep so the two
-      // motion treatments don't fight each other on the same row.
-      return '';
+      // tailor_ready seen, not yet approved: the agent is waiting on the
+      // user. Amber tint, same ambient-tint family as completed / failed.
+      return 'session-row--needs-attention';
+    case 'running':
+      // Agent working here, including the tailoring sub-flow before the
+      // document is ready. Purple gleam sweep.
+      return 'session-row--running';
     default:          return '';
   }
 }
 
-export const SessionRow: React.FC<SessionRowProps> = ({ job, isActive, onClick, onClose }) => {
+export const SessionRow: React.FC<SessionRowProps> = ({ job, isActive, acknowledged, onClick, onClose }) => {
   const display = deriveDisplayStatus(job);
   const label = formatLabel(job);
 
@@ -82,26 +90,19 @@ export const SessionRow: React.FC<SessionRowProps> = ({ job, isActive, onClick, 
   // stopped — e.g. orphaned by a server restart — has close as its only
   // escape, so the button must never be hidden.)
   const showCloseBtn = hovered || isActive;
-  // Attention dot is the "look here, this session needs you" signal. It
-  // yields the right-edge slot to the close button whenever that shows
-  // (hover or active), so the dot and the × never collide.
-  const showAttentionDot = display === 'needs_attention' && !isActive && !hovered;
   const showTooltip = hovered && overflowing && rect;
 
   return (
     <>
       <div
         ref={rowRef}
-        className={`session-row ${isActive ? 'session-row--active' : ''} ${modifierClass(display)}`.trim()}
+        className={`session-row ${isActive ? 'session-row--active' : ''} ${modifierClass(display, acknowledged)}`.trim()}
         onClick={onClick}
         onMouseEnter={handleEnter}
         onMouseLeave={handleLeave}
         role="button"
       >
         <span ref={labelRef} className="session-row__label">{label}</span>
-        {showAttentionDot && (
-          <span className="session-row__mark session-row__mark--attention" aria-label="needs attention" />
-        )}
         {showCloseBtn && (
           <button
             className="session-row__close"

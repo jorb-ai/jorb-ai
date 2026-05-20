@@ -13,7 +13,7 @@ export interface BrowserJobRow {
 }
 
 export interface BrowserEvent {
-  type: 'tool_call' | 'status' | 'error' | 'paused_for_tailor' | 'tailor_approved' | 'resumed';
+  type: 'tool_call' | 'status' | 'error' | 'paused_for_tailor' | 'tailor_ready' | 'tailor_approved' | 'resumed';
   tool?: string;
   message: string;
   ts: string;
@@ -33,13 +33,25 @@ export interface AgentJobEvent {
 /** Derived display status for session rows. */
 export type SessionDisplayStatus = BrowserJobRow['status'] | 'needs_attention';
 
-/** Derive the display status from a browser job row. */
+/**
+ * Derive the display status from a browser job row.
+ *
+ * Within a running job the tailoring sub-flow has three sub-states, told
+ * apart by the latest tailor-cycle event:
+ *   paused_for_tailor          -> sub-agent working      -> running
+ *   tailor_ready               -> awaiting user approval -> needs_attention
+ *   tailor_approved / resumed  -> approved, agent resumed -> running
+ * `tailor_ready` is the only event that means "your turn"; keying off it
+ * (not the paused_for_tailor count) is what lets the shell time the signal.
+ */
 export function deriveDisplayStatus(job: BrowserJobRow): SessionDisplayStatus {
   if (job.status !== 'running') return job.status;
   const events = job.events || [];
-  const pauseCount = events.filter((e) => e.type === 'paused_for_tailor').length;
-  const approvedCount = events.filter((e) => e.type === 'tailor_approved').length;
-  if (pauseCount > approvedCount) return 'needs_attention';
+  for (let i = events.length - 1; i >= 0; i--) {
+    const t = events[i].type;
+    if (t === 'tailor_ready') return 'needs_attention';
+    if (t === 'paused_for_tailor' || t === 'tailor_approved' || t === 'resumed') return 'running';
+  }
   return 'running';
 }
 

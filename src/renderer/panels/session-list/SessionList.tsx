@@ -6,6 +6,7 @@ import logoWordmark from '../../assets/logos/logo_wordmark.png';
 interface SessionListProps {
   sessions: BrowserJobRow[];
   activeJobId: string | null;
+  seenCompletedJobIds: Set<string>;
   onSelect: (jobId: string) => void;
   onNavigate: (url: string, sessionId?: string) => void;
   onClose: (jobId: string) => void;
@@ -31,6 +32,7 @@ const NAV_EMAIL: NavItem[] = [
 export const SessionList: React.FC<SessionListProps> = ({
   sessions,
   activeJobId,
+  seenCompletedJobIds,
   onSelect,
   onNavigate,
   onClose,
@@ -81,6 +83,7 @@ export const SessionList: React.FC<SessionListProps> = ({
                   key={job.id}
                   job={job}
                   isActive={job.id === activeJobId}
+                  acknowledged={seenCompletedJobIds.has(job.id)}
                   onClick={() => onSelect(job.id)}
                   onClose={() => onClose(job.id)}
                 />

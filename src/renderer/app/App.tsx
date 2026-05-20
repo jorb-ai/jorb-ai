@@ -16,6 +16,12 @@ export const App: React.FC = () => {
   // `session.show` return value (false = no view) and cleared whenever a
   // real view comes to the front.
   const [showPlaceholder, setShowPlaceholder] = useState(false);
+  // Completed jobs the user has viewed while completed. A finished job
+  // greets the user with a green tint; once they open it (see the result)
+  // the green drops. Keyed off "viewed while completed", not "ever
+  // opened", so opening a job to watch it run does not pre-clear the
+  // green it should show the moment it finishes.
+  const [seenCompletedJobIds, setSeenCompletedJobIds] = useState<Set<string>>(new Set());
 
   // ── Worker-driven active-session sync (Phase 5.2) ───────────────
   // When the worker sends `navigate` for a job, main calls showSession
@@ -68,6 +74,7 @@ export const App: React.FC = () => {
         setActiveJobId(null);
         setActiveNavId('__webapp__');
         setShowPlaceholder(false);
+        setSeenCompletedJobIds(new Set());
       }
     });
     return cleanup;
@@ -122,6 +129,23 @@ export const App: React.FC = () => {
     };
   }, [isAuthenticated, userId]);
 
+  // ── Green-tint acknowledgement (F2) ──────────────────────────────
+  // A job enters `seenCompletedJobIds` once the user has it active while
+  // it is completed. After that its sidebar green tint drops: the user
+  // has reviewed the finished application. Watching a job *run* does not
+  // count; that was the bug where the green never got a chance to show.
+  useEffect(() => {
+    if (!activeJobId) return;
+    const job = sessions.find((s) => s.id === activeJobId);
+    if (job?.status !== 'completed') return;
+    setSeenCompletedJobIds((prev) => {
+      if (prev.has(activeJobId)) return prev;
+      const next = new Set(prev);
+      next.add(activeJobId);
+      return next;
+    });
+  }, [activeJobId, sessions]);
+
   // ── Handlers ─────────────────────────────────────────────────────
 
   const handleSelectSession = useCallback(async (jobId: string) => {
@@ -173,6 +197,7 @@ export const App: React.FC = () => {
           sessions={sessions}
           activeJobId={activeJobId}
           activeNavId={activeNavId}
+          seenCompletedJobIds={seenCompletedJobIds}
           onSelect={handleSelectSession}
           onNavigate={handleNavigate}
           onClose={handleCloseSession}

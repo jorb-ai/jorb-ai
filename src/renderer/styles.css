@@ -46,8 +46,7 @@
   --sidebar-zone-width:    calc(var(--sidebar-card-width) + var(--sidebar-gutter-l) + var(--sidebar-gutter-r));
   --sidebar-radius:        14px;
 
-  --bar-collapsed:         44px;
-  --bar-expanded:          96px;
+  --bar-height:            96px;
   --header-height:         48px;
 
   /* Shadows — calibrated for white-on-white separation */
@@ -284,11 +283,28 @@ button {
               box-shadow var(--dur-fast) var(--ease-out);
 }
 
-/* Status tints — ambient signal on inactive rows. Placed BEFORE :hover and
-   --active so those keep their gray fills (hover wins over tint, active
-   wins over hover via .session-row--active:hover further down). */
-.session-row--completed { background: rgba(16, 185, 129, 0.07); }
-.session-row--failed    { background: rgba(239, 68, 68, 0.07); }
+/* Status tints. `failed` is a quiet static fill on the row background, so
+   it yields to :hover / --active like any neutral row. `completed` and
+   `needs-attention` instead pulse: a slow opacity breathe on a ::before
+   overlay, so the hover / active fills underneath stay intact, exactly
+   like the running gleam. Sweep = the agent is working; pulse = your move. */
+.session-row--failed { background: rgba(239, 68, 68, 0.14); }
+
+.session-row--completed::before,
+.session-row--needs-attention::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.session-row--completed::before {
+  background: rgba(16, 185, 129, 0.22);
+  animation: tint-pulse 3.4s var(--ease-in-out) infinite;
+}
+.session-row--needs-attention::before {
+  background: rgba(245, 158, 11, 0.30);
+  animation: tint-pulse 2.4s var(--ease-in-out) infinite;
+}
 
 .session-row:hover {
   background: var(--gray-50);
@@ -335,7 +351,6 @@ button {
 }
 
 .session-row__label,
-.session-row__mark,
 .session-row__close {
   position: relative; /* lift above the gleam pseudo */
   z-index: 1;
@@ -349,26 +364,6 @@ button {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.session-row__mark {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  font-size: 11px;
-  line-height: 1;
-  font-weight: 600;
-}
-
-.session-row__mark--attention {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--primary);
-  animation: breathe 1.8s var(--ease-in-out) infinite;
 }
 
 /* Close button — visible on hover or while active, otherwise hidden so
@@ -427,72 +422,13 @@ button {
    ══════════════════════════════════════════════════════════════════════ */
 
 .action-bar {
-  position: relative;
-  height: var(--bar-collapsed);
+  height: var(--bar-height);
+  display: flex;
+  align-items: center;
   background: var(--white);
   border-bottom: 1px solid var(--gray-200);
   overflow: hidden;
   flex-shrink: 0;
-}
-
-.action-bar--expanded {
-  height: var(--bar-expanded);
-}
-
-/* Primary left rail when the session needs user action */
-.action-bar--attention::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: var(--primary);
-}
-
-/* ── Collapsed (44px) — single line ─────────────────────────────── */
-
-.action-bar__collapsed {
-  height: var(--bar-collapsed);
-  padding: 0 20px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.action-bar__breadcrumb {
-  font-size: 13.5px;
-  font-weight: 500;
-  color: var(--gray-900);
-  white-space: nowrap;
-  letter-spacing: -0.005em;
-}
-
-.action-bar__sep {
-  color: var(--gray-300);
-}
-
-.action-bar__status-text {
-  flex: 1;
-  min-width: 0;
-  font-size: 12.5px;
-  color: var(--gray-500);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.action-bar__status-text--muted   { color: var(--gray-500); }
-.action-bar__status-text--success { color: var(--success); }
-.action-bar__status-text--danger  { color: var(--danger); }
-
-/* ── Expanded (96px) — JorbHeader hosts the narrative ─────────────── */
-
-.action-bar__expanded {
-  height: var(--bar-expanded);
-  display: flex;
-  align-items: center;
-  padding: 0;
 }
 
 .action-bar__stop {
@@ -531,7 +467,7 @@ button {
   align-items: center;
   gap: 12px;
   padding: 0 20px;
-  height: var(--bar-expanded);
+  height: var(--bar-height);
 }
 
 .jorb-header__avatar {
@@ -553,7 +489,6 @@ button {
 
 .jorb-header__bubble-wrap {
   position: relative;
-  flex: 1;
   min-width: 0;
   display: flex;
 }
@@ -570,8 +505,9 @@ button {
 
 .jorb-header__bubble {
   position: relative;
-  flex: 1;
+  /* Hug the text and cap the width: a contained bubble, not a bar-wide strip. */
   min-width: 0;
+  max-width: 460px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -583,26 +519,12 @@ button {
   box-shadow: 0 2px 12px rgba(41, 14, 153, 0.06);
 }
 
-.jorb-header__bubble--attention {
-  background: var(--primary-soft);
-  border-color: rgba(41, 14, 153, 0.18);
-}
-
-.jorb-header__bubble--danger {
-  background: rgba(239, 68, 68, 0.05);
-  border-color: rgba(239, 68, 68, 0.18);
-}
-
 .jorb-header__eyebrow {
   font-size: 12.5px;
   font-weight: 600;
   color: rgba(41, 14, 153, 0.85);
   letter-spacing: -0.005em;
   line-height: 1.2;
-}
-
-.jorb-header__bubble--danger .jorb-header__eyebrow {
-  color: var(--danger);
 }
 
 .jorb-header__speech {
@@ -622,6 +544,7 @@ button {
 
 .jorb-header__trailing {
   flex-shrink: 0;
+  margin-left: auto;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -640,6 +563,11 @@ button {
 @keyframes gleam-sweep {
   0%   { background-position: 200% 0; }
   100% { background-position: -200% 0; }
+}
+
+@keyframes tint-pulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
 }
 
 @keyframes jorb-enter {
