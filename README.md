@@ -8,7 +8,7 @@
 ### An AI agent applies to jobs for you. You watch every keystroke.
 
 Job applications, fully automated. Resumes and cover letters, tailored on the fly.
-Yours to review, yours to approve, yours to stop at any moment.
+Yours to review, yours to approve, yours to stop whenever you want.
 
 <br/>
 
@@ -30,58 +30,43 @@ Yours to review, yours to approve, yours to stop at any moment.
 
 ## How it works
 
-```
-                          ╭─────────────────────╮
-                          │                     │
-                          │         You         │
-                          │                     │
-                          │  watch · approve    │
-                          │       · stop        │
-                          │                     │
-                          ╰──────────┬──────────╯
-                                     │
-                                     ▼
-        ╭────────────────────────────────────────────────────────╮
-        │                                                        │
-        │                    Jorb AI Desktop                     │
-        │                                                        │
-        │     ╭──────────────────────────────────────────╮       │
-        │     │                                          │       │
-        │     │       the job application portal         │       │
-        │     │         ( real keystrokes — CDP )        │       │
-        │     │                                          │       │
-        │     ╰──────────────────────────────────────────╯       │
-        │                                                        │
-        ╰─────────────────────────┬──────────────────────────────╯
-                                  │
-                                  │  WebSocket
-                                  ▼
-                    ╭───────────────────────────╮
-                    │                           │
-                    │         Jorb Agent        │
-                    │                           │
-                    │      reads the page       │
-                    │      tailors documents    │
-                    │      decides next step    │
-                    │                           │
-                    ╰───────────────────────────╯
+```mermaid
+%%{init: {'theme':'base', 'themeVariables': { 'fontFamily':'-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif', 'fontSize':'15px'}}}%%
+flowchart TB
+    classDef userBox    fill:#FEF3C7,stroke:#F59E0B,stroke-width:2.5px,color:#78350F
+    classDef desktopBox fill:#F5F3FF,stroke:#7C3AED,stroke-width:2.5px,color:#5B21B6
+    classDef portalBox  fill:#FFFFFF,stroke:#A1A1AA,stroke-width:1.5px,color:#3F3F46,stroke-dasharray:5 4
+    classDef agentBox   fill:#E0F2FE,stroke:#0EA5E9,stroke-width:2.5px,color:#0C4A6E
+
+    User(["👤  <b>You</b><br/><i>watch · approve · stop</i>"]):::userBox
+
+    subgraph Desktop ["💻 &nbsp;<b>Jorb AI Desktop</b>"]
+        Portal["the job application portal<br/><i>real keystrokes, sent via CDP</i>"]:::portalBox
+    end
+
+    Agent(["🧠  <b>Jorb Agent</b><br/><i>reads the page · tailors documents · decides the next step</i>"]):::agentBox
+
+    User ==>|opens| Desktop
+    Desktop <-.->|"&nbsp;WebSocket&nbsp;"| Agent
+
+    style Desktop fill:#F5F3FF,stroke:#7C3AED,stroke-width:2.5px,color:#5B21B6
 ```
 
-The desktop app embeds the real job application page inside its own window. The Jorb agent — your AI copilot in the cloud — reads the page, decides what to type, and sends those keystrokes back over a single WebSocket. The desktop app replays them through Chrome DevTools Protocol, the same channel browsers use to drive themselves. To the application portal, every keystroke looks like a real human typing.
+The desktop app embeds the real job application page inside its own window. The Jorb agent, your AI copilot in the cloud, reads the page, decides what to type, and ships those keystrokes back over a single WebSocket. The desktop replays them through Chrome DevTools Protocol, the same channel real browsers use to drive themselves. To the application portal, every keystroke looks like a human at the keyboard.
 
-When the agent reaches a resume or cover letter upload, it pauses, tailors the document in your name, and waits for your explicit approval before submitting anything.
+When the agent reaches a resume or cover letter upload, it pauses, tailors the document in your voice, and waits for your explicit approval before anything gets submitted.
 
 <br/>
 
 ## What makes it different
 
-**Real keystrokes, not JavaScript injection.**  
-Most automation bots inject scripts or simulate clicks at the page level. Modern job portals detect this immediately. Jorb AI types through Chrome DevTools Protocol — the same interface real browsers use — so every input is indistinguishable from a human at the keyboard.
+🎹 &nbsp; **Real keystrokes, not JavaScript injection.**  
+Most automation bots inject scripts or simulate clicks at the page level. Modern job portals detect that immediately. Jorb AI types through Chrome DevTools Protocol, the same interface real browsers use, so every input is indistinguishable from a human at the keyboard.
 
-**You stay in the loop.**  
+👀 &nbsp; **You stay in the loop.**  
 Every keystroke is visible. Every tailored document is yours to review. The Stop button is always one click away. Nothing gets submitted without your eyes on it.
 
-**Open. Auditable. On your machine.**  
+🔓 &nbsp; **Open. Auditable. Yours.**  
 The code that runs on your computer is right here. No hidden binaries. No black box. Read it, fork it, ship it.
 
 <br/>
