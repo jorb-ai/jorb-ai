@@ -2,130 +2,98 @@
 
 <img src="src/renderer/assets/logos/logo_wordmark.png" alt="Jorb AI" width="280" />
 
-### Jorb AI Desktop
+<br/>
+<br/>
 
-**Automated job applications, supervised in real time.**
+### An AI agent applies to jobs for you. You watch every keystroke.
 
-An Electron desktop app where an AI agent fills application forms via Chrome DevTools Protocol — and you watch every keystroke, approve every tailored document, and stop the agent at any step.
+Job applications, fully automated. Resumes and cover letters, tailored on the fly.
+Yours to review, yours to approve, yours to stop at any moment.
+
+<br/>
 
 [![Electron](https://img.shields.io/badge/Electron-41-47848F?logo=electron&logoColor=white)](https://www.electronjs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.3-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
-[![Vite](https://img.shields.io/badge/Vite-7-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows-lightgrey)](https://github.com/jorb-ai/desktop-app)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows-lightgrey)](https://www.electronjs.org/)
 
-[Website](https://jorb.ai) · [Architecture](./CLAUDE.md) · [Issues](https://github.com/jorb-ai/desktop-app/issues)
+<br/>
+
+**[jorb.ai](https://jorb.ai)**
 
 </div>
 
+<br/>
+
 ---
 
-## What it does
-
-Sign up at [jorb.ai](https://jorb.ai), download the desktop app, and ask Jorb to apply to a job. The agent opens the application page inside the app, reads the form, fills your details, attaches tailored resumes and cover letters, and submits — all while you watch in real time.
-
-Three things make it different from a Playwright script:
-
-- **Chrome DevTools Protocol, not JS injection.** Keystrokes look like human input at the browser-engine level. Job portals' bot detection sees nothing unusual.
-- **Live human-in-the-loop.** Every step is visible; you can stop at any moment. Tailored resumes and cover letters require explicit approval before upload.
-- **Dumb-terminal architecture.** This app has zero business logic and zero direct database access. All intelligence lives in the backend; the shell only renders, attaches CDP, and ships commands over one WebSocket.
-
-## Stack
-
-- **[Electron 41](https://www.electronjs.org/)** + **[TypeScript 5](https://www.typescriptlang.org/)** — desktop runtime
-- **[React 19](https://react.dev/)** + **[Vite 7](https://vitejs.dev/)** — renderer with HMR
-- **Chrome DevTools Protocol** — page automation
-- **WebSocket** (single connection) — data + control channel to the backend
-
-## Quick start
-
-```bash
-git clone https://github.com/jorb-ai/desktop-app.git
-cd desktop-app
-npm install
-npm run dev
-```
-
-`npm run dev` boots Vite on `:5273` and launches Electron pointing at it. Renderer changes hot-reload; main-process changes need a restart.
-
-You'll also need the backend running locally — see [`web-api`](https://github.com/jorb-ai/web-api) — and the webapp on `:3000` from [`web-app`](https://github.com/jorb-ai/web-app).
-
-## Build & distribute
-
-```bash
-npm run build       # one-shot tsc + vite build
-npm run build:once  # build + launch with the production renderer
-npm run package     # electron-builder (no distribute)
-npm run dist        # electron-builder + .dmg / .zip (macOS) / .exe (Windows)
-```
-
-Artifacts land in `release/`.
-
-## Architecture at a glance
+## How it works
 
 ```
-┌── Main process ────────────┐         ┌── Backend (web-api) ──┐
-│ panels.ts (BrowserViews)   │ ←─ WS ─→│ Agent orchestrator    │
-│ websocket-client.ts        │         │ Pubsub poll loop      │
-│ file-sync.ts               │         │ Service-role Supabase │
-│ rpc-bridge.ts              │         └───────────────────────┘
-└─────────────┬──────────────┘
-              │ IPC
-              ▼
-┌── Renderer (React) ────────┐
-│ Sidebar + adaptive bar     │
-└─────────────┬──────────────┘
-              │ hosts
-              ▼
-┌── Embedded BrowserViews ───┐
-│ viewA: job portal (CDP)    │
-│ viewB: tailor (on demand)  │
-│ __webapp__ / __gmail__ /   │
-│ __outlook__: ambient nav   │
-└────────────────────────────┘
+                          ╭─────────────────────╮
+                          │                     │
+                          │         You         │
+                          │                     │
+                          │  watch · approve    │
+                          │       · stop        │
+                          │                     │
+                          ╰──────────┬──────────╯
+                                     │
+                                     ▼
+        ╭────────────────────────────────────────────────────────╮
+        │                                                        │
+        │                    Jorb AI Desktop                     │
+        │                                                        │
+        │     ╭──────────────────────────────────────────╮       │
+        │     │                                          │       │
+        │     │       the job application portal         │       │
+        │     │         ( real keystrokes — CDP )        │       │
+        │     │                                          │       │
+        │     ╰──────────────────────────────────────────╯       │
+        │                                                        │
+        ╰─────────────────────────┬──────────────────────────────╯
+                                  │
+                                  │  WebSocket
+                                  ▼
+                    ╭───────────────────────────╮
+                    │                           │
+                    │         Jorb Agent        │
+                    │                           │
+                    │      reads the page       │
+                    │      tailors documents    │
+                    │      decides next step    │
+                    │                           │
+                    ╰───────────────────────────╯
 ```
 
-Single WebSocket carries CDP commands, navigation, file sync, panel switches, and pubsub events. Renderer holds no Supabase client and no other network surface — CSP `connect-src 'self'` enforces this.
+The desktop app embeds the real job application page inside its own window. The Jorb agent — your AI copilot in the cloud — reads the page, decides what to type, and sends those keystrokes back over a single WebSocket. The desktop app replays them through Chrome DevTools Protocol, the same channel browsers use to drive themselves. To the application portal, every keystroke looks like a real human typing.
 
-Full reference: [`CLAUDE.md`](./CLAUDE.md). Cross-repo architecture across desktop-app + web-api + web-app: [`workstreams/browser/`](https://github.com/jorb-ai/jorb-ai/tree/main/workstreams/browser) in the HQ repo.
+When the agent reaches a resume or cover letter upload, it pauses, tailors the document in your name, and waits for your explicit approval before submitting anything.
 
-## Source structure
+<br/>
 
-```
-src/
-├── main/         Electron main process — windows, panels, WS, IPC handlers
-├── preload/      contextBridge surfaces (preload + preload-webview)
-├── renderer/     React app — sidebar, action bar, components
-└── types/        Shared types (config + IPC channel enum)
-```
+## What makes it different
 
-See [`CLAUDE.md`](./CLAUDE.md) "Source Structure" for the per-file inventory.
+**Real keystrokes, not JavaScript injection.**  
+Most automation bots inject scripts or simulate clicks at the page level. Modern job portals detect this immediately. Jorb AI types through Chrome DevTools Protocol — the same interface real browsers use — so every input is indistinguishable from a human at the keyboard.
 
-## Conventions
+**You stay in the loop.**  
+Every keystroke is visible. Every tailored document is yours to review. The Stop button is always one click away. Nothing gets submitted without your eyes on it.
 
-- Single branch (`main`); no feature branches.
-- All logs through `electron-log`; never raw `console.*` in main.
-- Bracket prefix on every log message: `[ModuleName]`.
-- No emoji in logs.
-- Renderer never imports `@supabase/supabase-js`. CSP enforces it.
-- Action bar height stays binary: `0` (hidden) or `96` (JorbHeader).
+**Open. Auditable. On your machine.**  
+The code that runs on your computer is right here. No hidden binaries. No black box. Read it, fork it, ship it.
 
-## Related repos
-
-- **[`web-api`](https://github.com/jorb-ai/web-api)** — FastAPI backend, agent orchestrator
-- **[`web-app`](https://github.com/jorb-ai/web-app)** — React webapp (loaded as `__webapp__` and inside `/tailor/*`)
-- **[`web-public`](https://github.com/jorb-ai/web-public)** — Next.js SEO surface at `jorb.ai`
-- **[`chrome-extension`](https://github.com/jorb-ai/chrome-extension)** — LinkedIn save button
+<br/>
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+[MIT](LICENSE) © 2026 Jorb AI
 
----
+<br/>
 
 <div align="center">
 
-Built by [Jorb AI](https://jorb.ai)
+Built with care at [jorb.ai](https://jorb.ai)
 
 </div>
