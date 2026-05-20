@@ -47,13 +47,13 @@ Dimensions:
 
 - Window background = solid white (#FFFFFF)
 - LEFT sidebar zone = **190px** (180px frosted-glass card + 6px L/T/B gutter + 4px R gutter, 14px radius, `backdrop-filter: blur(24px) saturate(180%)`, `rgba(255,255,255,0.72)` fill, elevated drop shadow + 1px subtle border for white-on-white separation)
-- Middle action bar = **0 hidden / 44 collapsed / 96 expanded** (variable)
+- Middle action bar = **0 hidden / 96 JorbHeader** (variable)
 - Browser area fills the rest
 
 ```
 ┌─── window (white) ────────────────────────────────────────────────────┐
 │ ┌──────────┐                                                          │
-│ │          │  ┌── Action Bar (0 / 44 / 96 JorbHeader) ───────────────┐│
+│ │          │  ┌── Action Bar (0 or 96 JorbHeader) ───────────────┐│
 │ │ jorb.ai  │  ├──────────────────────────────────────────────────────┤│
 │ │          │  │                                                      ││
 │ │ Sessions │  │              BROWSER (flex fills)                    ││
@@ -66,27 +66,29 @@ Dimensions:
 `⌁` = subtle gleaming-purple sweep on a running session row (CSS-only,
 animation: gleam-sweep, 2.4s loop, signals "agent is working here").
 
-Action-bar state machine (seven states, three heights):
+Action-bar state machine (binary: hidden, or the 96px JorbHeader):
 
 | Active tab | Height | Content |
 |---|---|---|
-| idle / `__webapp__` / `__gmail__` / `__outlook__` | **0** | Hidden — BrowserView fills the middle panel top-to-bottom. |
-| `queued` agent | 44 | Title + "Waiting for worker capacity" |
-| `running` agent | 96 | JorbHeader: 60px mascot video + speech bubble (latest agent message) + Stop button |
-| `running` + needs_review | 96 | Same JorbHeader, primary-accent 3px left rail, "review and approve" copy in the bubble |
-| `completed` / `failed` / `stopped` | 44 | Title + single-line status |
+| idle / `__webapp__` / `__gmail__` / `__outlook__` | **0** | Hidden; BrowserView fills the middle panel top-to-bottom. |
+| any agent session (`queued` / `running` / `needs_review` / `completed` / `failed` / `stopped`) | **96** | JorbHeader: 60px mascot video + speech bubble. Only the speech line changes per state; the bubble is one constant purple, the bar never changes shape or color. Stop button only while `running` / `needs_review`. |
 
 Renderer notifies main of the current bar height via
-`window.Finbro.panel.setBarHeight(h)`; `windows.ts`'s `setActionBarHeight`
-re-flows `BrowserView` bounds whenever the bar shows / hides / toggles
-between collapsed and expanded.
+`window.Finbro.panel.setBarHeight(h)` (0 or 96); `windows.ts`'s
+`setActionBarHeight` re-flows `BrowserView` bounds whenever the bar
+shows or hides.
 
-**Active-session sync (Phase 5.2).** When the worker auto-jumps to a
-session via the `navigate` WS command, `panels.ts:showSession` fires
-`session:active-changed` over IPC. The renderer's
-`window.Finbro.session.onActiveChanged(cb)` listener mirrors that into
-`activeJobId` so the sidebar row gets the active pill without the user
-having to click.
+**Active-session sync.** Worker-driven navigates load in the
+background — `executeNavigate` passes `autoShow: false` to
+`navigateSession`, so viewA is created, the URL loads, CDP attaches,
+but the view is NOT brought to the front. The browser-tab analogy:
+the worker opens a new tab behind your current one, and the sidebar
+row's purple gleam (via the `browser_job_inserted` pubsub push) is the
+"loading in the background" signal. `panels.ts:showSession` still fires
+`session:active-changed` over IPC, but only on user-initiated calls
+(sidebar row click, system-tab nav); the renderer's
+`window.Finbro.session.onActiveChanged(cb)` listener keeps `activeJobId`
+in lockstep with whichever view is actually on top.
 
 ## Visual Language
 
@@ -98,14 +100,14 @@ the webapp that runs inside its BrowserViews feel like one product.
   same as `web-app/tailwind.config.ts`. No web fonts, no Google Fonts
   CDN.
 - **Color**: single-accent system. `primary` = #290E99 (`finbro-purple`
-  in the webapp) reserved for "act now" signals: needs-attention
-  breathing dot, agent-live dot, the gleaming sweep on running session
-  rows, the JorbHeader speech bubble, the `needs_review` action-bar
-  left rail. NOT used for plain active-row state. Neutrals are a
+  in the webapp) reserved for "act now" signals: the agent-live dot,
+  the gleaming sweep on running session rows, and the JorbHeader
+  speech bubble. NOT used for plain active-row state. Neutrals are a
   Tailwind-aligned gray scale (`gray-50`…`gray-900`) matching
   `web-app`'s actual usage. Semantic `success` / `warning` / `danger`
-  used only on small marks / icons + faint ambient tints (~7%) on
-  completed / failed session rows.
+  carry the session-row status signals: a green pulse (completed), an
+  amber pulse (needs-attention), a static red tint (failed), plus small
+  marks and icons.
 - **Chrome (Phase 5.2)**: solid white window canvas. The sidebar is a
   frosted-glass card (`rgba(255,255,255,0.72)` over `backdrop-filter:
   blur(24px) saturate(180%)`) with an inset white-highlight + an
@@ -120,9 +122,8 @@ the webapp that runs inside its BrowserViews feel like one product.
   precursor to active, not a competing treatment.
 - **Running state (Phase 5.2)**: gleaming sweep — a translucent primary
   gradient swept L→R over the row at ~2.4s ease-in-out infinite. Layers
-  on top of the active pill if the row is also active. Stops the
-  moment the row transitions to needs_attention (which has its own
-  breathing dot signal) or any terminal status.
+  on top of the active pill if the row is also active. Runs through the
+  tailoring sub-flow too; stops only on a terminal status.
 - **Brand**: `logo_wordmark.png` image asset in the sidebar header
   (48px container, logo 20px tall). No border-bottom — breathing space
   below carries the separation.
@@ -183,7 +184,7 @@ src/
 │   ├── config.ts                # electron-store config
 │   ├── windows.ts               # Two-panel bounds. setActionBarHeight(h)
 │   │                            # re-flows BrowserView bounds when the
-│   │                            # renderer bar toggles between 0/44/96.
+│   │                            # renderer bar toggles between 0 and 96.
 │   ├── panels.ts                # Multi-session BrowserView manager.
 │   │                            # Phase 5.2: showSession fires
 │   │                            # session:active-changed IPC.
@@ -257,6 +258,14 @@ elapsed counter (`formatElapsed`, `ELAPSED_VISIBLE_MS`), the
 `thinking-dot` keyframe + JSX), and the breadcrumb-only collapsed
 mode for system tabs (now hidden — bar height 0).
 
+**Removed in Phase 6**: the entire 44px collapsed action bar:
+`CollapsedBar` and its title breadcrumb, the `--bar-collapsed` CSS var,
+and the `.action-bar__collapsed` / `__breadcrumb` / `__sep` / `__status-text`
+rules. Every agent-session state now renders the 96px JorbHeader, so the
+bar is binary (0 or 96); `deriveMode` derives from the shared
+`deriveDisplayStatus`. The `tailor_ready` event keys the amber
+needs-attention state (`contracts.md` C10).
+
 ## Key Conventions
 
 - **panels/** = layout regions composed once in App.tsx. Never reused.
@@ -318,9 +327,8 @@ updates for `browser_jobs` and `agent_jobs`) flows over the WS via
    in `web-api/finbroapi/src/browser_worker/main.py`
    (see `workstreams/browser/contracts.md` C9).
 7. Do not reintroduce a right panel. Phase 5 was a deliberate removal —
-   intervention signals live in the action-bar transform + sidebar
-   accent dot, and the Approve affordance lives inside the tailor page
-   per QA R26.
+   intervention signals live in the action-bar transform, and the
+   Approve affordance lives inside the tailor page per QA R26.
 8. Do not name colors after products ("brand", "finbroPurple"). Generic
    tokens only (`primary`, `neutral*`, `success` / `warning` / `danger`).
 

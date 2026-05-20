@@ -264,8 +264,14 @@ async function executeNavigate(id: string, params: any): Promise<void> {
   }
 
   try {
-    const tabId = await navigateSession(session_id, url);
-    log.info('[WebSocket] Navigated:', session_id.slice(0, 8), '→', url, '— tab_id:', tabId);
+    // Worker-driven navigate: load in the BACKGROUND. The agent needs viewA
+    // created + URL loaded + CDP attached (all of which still happen), but we
+    // do NOT bring it to the front — that would yank the user's active tab
+    // away from wherever they are. The sidebar's WS pubsub push shows the
+    // new row with a purple gleam; the user clicks in when they want to
+    // watch. See `panels.ts:navigateSession` autoShow doc.
+    const tabId = await navigateSession(session_id, url, { autoShow: false });
+    log.info('[WebSocket] Navigated:', session_id.slice(0, 8), '→', url, '— tab_id:', tabId, '(background)');
     sendResult(id, { tab_id: tabId });
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Navigation failed';

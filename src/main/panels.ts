@@ -225,8 +225,32 @@ export function showSession(sessionId: string): boolean {
   return true;
 }
 
-export async function navigateSession(sessionId: string, url: string): Promise<number> {
-  log.info(`[Panels] navigateSession(${sessionId.slice(0, 8)}) — url: ${url}`);
+/**
+ * Create + load a session's viewA. Two modes:
+ *   - autoShow: true  (default) — bring the session to the front after load.
+ *                                 Used for user-initiated nav: the initial
+ *                                 __webapp__ load on app start, and sidebar
+ *                                 system-tab clicks routed through
+ *                                 showOrNavigateSession.
+ *   - autoShow: false           — load in the background. The view is created,
+ *                                 the URL is loaded, CDP is attached — but the
+ *                                 view is NOT brought to the front. Used by
+ *                                 the WS `navigate` action so the worker can
+ *                                 start a session without yanking the user's
+ *                                 active tab. The user sees the new row in
+ *                                 the sidebar (purple gleam) and clicks in
+ *                                 when ready.
+ *
+ * CDP works on hidden BrowserViews — it attaches to webContents, not visual
+ * state — so the agent can fully operate against a background-loaded view.
+ */
+export async function navigateSession(
+  sessionId: string,
+  url: string,
+  options: { autoShow?: boolean } = {},
+): Promise<number> {
+  const { autoShow = true } = options;
+  log.info(`[Panels] navigateSession(${sessionId.slice(0, 8)}) — url: ${url}, autoShow: ${autoShow}`);
   let session = sessions.get(sessionId);
 
   // Tab-switch semantics: if this session already hosts the target origin,
@@ -240,7 +264,7 @@ export async function navigateSession(sessionId: string, url: string): Promise<n
       const currentUrl = session.viewA.webContents.getURL();
       if (currentUrl && new URL(currentUrl).origin === new URL(url).origin) {
         log.info(`[Panels] navigateSession(${sessionId.slice(0, 8)}) — origin match, skipping reload`);
-        showSession(sessionId);
+        if (autoShow) showSession(sessionId);
         return session.tabId;
       }
     } catch (err) {
@@ -280,8 +304,9 @@ export async function navigateSession(sessionId: string, url: string): Promise<n
   session.tabId = session.viewA.webContents.id;
   log.info(`[Panels] navigateSession(${sessionId.slice(0, 8)}) — loaded, tabId=${session.tabId}`);
 
-  // Auto-show this session
-  showSession(sessionId);
+  if (autoShow) {
+    showSession(sessionId);
+  }
 
   return session.tabId;
 }
