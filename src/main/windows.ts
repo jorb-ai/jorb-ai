@@ -37,7 +37,7 @@ export async function createMainWindow(): Promise<BrowserWindow> {
       nodeIntegration: false,
       sandbox: true,
     },
-    title: 'jorb.ai',
+    title: 'Jorb AI',
     backgroundColor: '#FDFDFB',
     show: false,
   });

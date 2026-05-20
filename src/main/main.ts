@@ -6,7 +6,7 @@ import { initFileSync } from './file-sync';
 import { getConfigPath } from './config';
 import { registerRpcHandlers, setMainWindow } from './rpc-bridge';
 
-log.info('jorb.ai starting — Electron:', process.versions.electron, '| Chrome:', process.versions.chrome);
+log.info('Jorb AI starting — Electron:', process.versions.electron, '| Chrome:', process.versions.chrome);
 
 app.whenReady().then(async () => {
   log.info('[Main] App ready');

@@ -55,7 +55,7 @@ export const SessionList: React.FC<SessionListProps> = ({
         className="sidebar__brand"
         onClick={() => onNavigate('http://localhost:3000', '__webapp__')}
       >
-        <img src={logoWordmark} alt="jorb.ai" className="sidebar__logo" />
+        <img src={logoWordmark} alt="Jorb AI" className="sidebar__logo" />
       </div>
 
       <div className="sidebar__sections">
