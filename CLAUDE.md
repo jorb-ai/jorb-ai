@@ -129,9 +129,10 @@ src/
 │   │                            executeNavigate passes autoShow:false.
 │   ├── auth.ts                  JWT in-memory. Push-only ingress from
 │   │                            the webapp via window.finbro.sendAuthToken.
-│   ├── file-sync.ts             Supabase storage -> local files.
-│   │                            file_sync_ack per download plus immediate
-│   │                            ack for already-local files.
+│   ├── file-sync.ts             Single-round-trip download on
+│   │                            file_sync_trigger (signed URL inline).
+│   │                            files/ wiped on every cold start;
+│   │                            no metadata.txt, no orphan-detection.
 │   ├── ipc.ts                   IPC handlers: config, auth, panel
 │   │                            navigate / set-bar-height, browser:stop,
 │   │                            session show / show-tailor / destroy /
@@ -228,7 +229,7 @@ Supabase Realtime is NOT used by this renderer. All data (list plus live updates
 3. Do not inject DOM into any BrowserView. CDP isolation for viewA must be preserved.
 4. Do not import `@supabase/supabase-js` in the renderer. Enforced by `package.json` (no dep) and by CSP `connect-src 'self'`.
 5. BrowserView partition is `persist:portal`, isolates cookies from the main renderer process.
-6. `MAX_BROWSER_JOB_SESSIONS = 5` must equal `MAX_CONCURRENT_BROWSER_JOBS` in `web-api/finbroapi/src/browser_worker/main.py` (see `workstreams/browser/contracts.md` C9).
+6. `MAX_BROWSER_JOB_SESSIONS = 15` must equal `MAX_CONCURRENT_BROWSER_JOBS` in `web-api/finbroapi/src/browser_worker/main.py` (see `workstreams/browser/contracts.md` C9). Cap-raise rationale and the vertical-scaling tiers live in `workstreams/browser/architecture.md` "Scaling Posture".
 7. Do not reintroduce a right panel. Phase 5 was a deliberate removal. Intervention signals live in the action-bar transform, and the Approve affordance lives inside the tailor page per QA R26.
 8. Do not name colors after products ("brand", "finbroPurple"). Generic tokens only (`primary`, `neutral*`, `success` / `warning` / `danger`).
 

@@ -5,22 +5,17 @@ import * as https from 'https';
 import WebSocket from 'ws';
 import log from './logger';
 
-// WebSocket reference for sending messages
+// WebSocket reference for sending acks
 let ws: WebSocket | null = null;
 
-// Local file IDs tracked in metadata.txt
-let localIds: Set<string> = new Set();
-
-// Sync state
-let isSyncing: boolean = false;
-
-// Paths
+// Paths. files/ is a pure write-once cache: wiped on every cold start,
+// populated only by file_sync_trigger, consumed by the next CDP
+// upload_file, then forgotten. The desktop holds no truth across launches.
 const USER_DATA_PATH = app.getPath('userData');
 const FILES_DIR = path.join(USER_DATA_PATH, 'files');
-const METADATA_FILE = path.join(USER_DATA_PATH, 'metadata.txt');
 
 /**
- * Set WebSocket reference for sending messages
+ * Set WebSocket reference for sending acks.
  */
 export function setWebSocket(websocket: WebSocket): void {
   ws = websocket;
@@ -28,22 +23,18 @@ export function setWebSocket(websocket: WebSocket): void {
 }
 
 /**
- * Initialize file sync system on app startup
- * Creates directories and loads metadata
+ * Initialize file-sync system on app startup. Wipes files/ so the
+ * directory is always empty between launches.
  */
 export async function initFileSync(): Promise<void> {
-  log.info('[FileSync] Initializing file sync...');
-  log.debug('[FileSync] User data path:', USER_DATA_PATH);
+  log.info('[FileSync] Initializing — wiping files/, starting fresh');
   log.debug('[FileSync] Files directory:', FILES_DIR);
-  
-  try {
-    // Ensure directories exist
-    ensureDirectories();
-    
-    // Load existing metadata
-    localIds = loadLocalIds();
-    log.info('[FileSync] Loaded', localIds.size, 'files from metadata');
 
+  try {
+    if (fs.existsSync(FILES_DIR)) {
+      fs.rmSync(FILES_DIR, { recursive: true, force: true });
+    }
+    fs.mkdirSync(FILES_DIR, { recursive: true });
     log.info('[FileSync] Initialization complete');
   } catch (error) {
     log.error('[FileSync] Initialization failed:', error);
@@ -51,31 +42,9 @@ export async function initFileSync(): Promise<void> {
 }
 
 /**
- * Request file sync from server
- * Called after WebSocket registration is confirmed
- */
-export function requestFileSync(): void {
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
-    log.error('[FileSync] Cannot request sync - WebSocket not connected');
-    return;
-  }
-
-  log.info('[FileSync] Requesting file sync...');
-
-  try {
-    ws.send(JSON.stringify({
-      type: 'file_sync_init'
-    }));
-    log.info('[FileSync] File sync request sent');
-  } catch (error) {
-    log.error('[FileSync] Failed to send sync request:', error);
-  }
-}
-
-/**
- * Send a file_sync_ack for a specific file_id. Spec 4.8 — unblocks
- * tailor.py's generate_and_sync_pdf wait_for. Safe to call for any
- * file_id; the server silently ignores acks with no pending event.
+ * Send a file_sync_ack for a specific file_id. Unblocks tailor.py's
+ * generate_and_sync_pdf wait_for. Safe to call any time; the server
+ * silently ignores acks with no pending event.
  */
 function sendFileSyncAck(fileId: string): void {
   if (ws && ws.readyState === WebSocket.OPEN) {
@@ -88,135 +57,39 @@ function sendFileSyncAck(fileId: string): void {
 }
 
 /**
- * Handle file metadata from server
- * Compares with local files and requests signed URLs for missing ones
+ * Handle a file_sync_trigger from the server. The payload carries the
+ * signed URL inline so this is a single round trip — no metadata
+ * listing, no separate request_signed_urls follow-up.
  */
-export async function handleSyncMetadata(files: Array<{id: string, file_name: string}>): Promise<void> {
-  // Already-local files: emit an ack immediately, BEFORE the isSyncing
-  // gate. Acks are stateless — the server maps them into
-  // PENDING_FILE_SYNC_ACKS by file_id and silently no-ops on unknown ids
-  // — so sending them is always safe. Hoisting above the gate fixes a
-  // race: if tailor.py fires a second file_sync_trigger while an earlier
-  // sync is still downloading (common when the user re-runs tailor
-  // within a session), the second metadata payload would otherwise hit
-  // the in-progress gate and return, and the newly-uploaded file's ack
-  // would never fire → tailor.py blocks 30s and raises File sync timeout.
-  for (const f of files) {
-    if (localIds.has(f.id)) sendFileSyncAck(f.id);
-  }
-
-  if (isSyncing) {
-    log.warn('[FileSync] Sync already in progress, ignoring download request (already-local acks already sent)');
-    return;
-  }
-
-  isSyncing = true;
-  log.info('[FileSync] Received metadata for', files.length, 'files');
+export async function handleSyncTrigger(payload: {
+  file_id: string;
+  file_name: string;
+  signed_url: string;
+}): Promise<void> {
+  const { file_id, file_name, signed_url } = payload;
+  log.info('[FileSync] Trigger — downloading:', file_name, `(${file_id})`);
 
   try {
-    const serverIds = new Set(files.map(f => f.id));
-    log.debug('[FileSync] Server has', serverIds.size, 'files');
-    log.debug('[FileSync] Local has', localIds.size, 'files');
-
-    // Find missing files (on server but not local)
-    const missingIds: string[] = [];
-    serverIds.forEach(id => {
-      if (!localIds.has(id)) {
-        missingIds.push(id);
-      }
-    });
-
-    // Find orphaned files (local but not on server)
-    const orphanedIds: string[] = [];
-    localIds.forEach(id => {
-      if (!serverIds.has(id)) {
-        orphanedIds.push(id);
-      }
-    });
-
-    log.debug('[FileSync] Missing:', missingIds.length, 'files');
-    log.debug('[FileSync] Orphaned:', orphanedIds.length, 'files');
-
-    // Delete orphaned files
-    if (orphanedIds.length > 0) {
-      deleteOrphanedFiles(orphanedIds);
-    }
-
-    // Request signed URLs for missing files
-    if (missingIds.length > 0) {
-      requestSignedUrls(missingIds);
-    } else {
-      log.info('[FileSync] All files up to date, no downloads needed');
-      isSyncing = false;
-    }
-
+    await downloadFile(file_id, file_name, signed_url);
+    sendFileSyncAck(file_id);
+    log.info('[FileSync] Trigger — downloaded + acked:', file_name);
   } catch (error) {
-    log.error('[FileSync] Error handling metadata:', error);
-    isSyncing = false;
+    log.error('[FileSync] Trigger — download failed for', file_name, ':', error);
+    // Do NOT ack on failure — let tailor.py time out and surface
+    // "File sync timeout" rather than return a path to a missing
+    // file that upload_file would silently fail on.
   }
 }
 
 /**
- * Handle signed URLs from server
- * Downloads each file to local storage
- */
-export async function handleSignedUrls(files: Array<{id: string, file_name: string, signed_url: string}>): Promise<void> {
-  log.info('[FileSync] Received signed URLs for', files.length, 'files');
-  
-  const results = {
-    synced: [] as string[],
-    failed: [] as string[]
-  };
-  
-  // Download each file sequentially
-  for (const file of files) {
-    try {
-      log.debug('[FileSync] Downloading:', file.file_name, `(${file.id})`);
-      await downloadFile(file.id, file.file_name, file.signed_url);
-
-      localIds.add(file.id);
-      appendToMetadata(file.id);
-      results.synced.push(file.id);
-      // Spec 4.8: ack per successful download so tailor.py unblocks.
-      sendFileSyncAck(file.id);
-
-      log.debug('[FileSync] Downloaded:', file.file_name);
-    } catch (error) {
-      log.error('[FileSync] Failed to download', file.file_name, ':', error);
-      results.failed.push(file.id);
-      // Do NOT ack on failure — let tailor.py time out and surface
-      // "File sync timeout" rather than return a path to a missing
-      // file that upload_file will silently fail on.
-    }
-  }
-  
-  log.info('[FileSync] Download summary - Success:', results.synced.length, 'Failed:', results.failed.length);
-
-  isSyncing = false;
-  log.info('[FileSync] File sync complete');
-}
-
-/**
- * Get files directory path (utility)
- */
-export function getFilesDirectory(): string {
-  return FILES_DIR;
-}
-
-/**
- * Resolve relative file path to absolute path
+ * Resolve relative file path to absolute path.
  * @param relativePath - Relative path from files directory (e.g. "abc-123/resume.pdf")
  * @returns Absolute path or null if file doesn't exist
  */
 export function resolveFilePath(relativePath: string): string | null {
   try {
     const fullPath = path.join(FILES_DIR, relativePath);
-    
-    // Verify file exists
-    if (fs.existsSync(fullPath)) {
-      return fullPath;
-    }
-    
+    if (fs.existsSync(fullPath)) return fullPath;
     log.warn('[FileSync] File not found:', fullPath);
     return null;
   } catch (error) {
@@ -226,163 +99,47 @@ export function resolveFilePath(relativePath: string): string | null {
 }
 
 /**
- * Ensure directory structure exists
- */
-function ensureDirectories(): void {
-  // Create files directory if it doesn't exist
-  if (!fs.existsSync(FILES_DIR)) {
-    fs.mkdirSync(FILES_DIR, { recursive: true });
-    log.info('[FileSync] Created files directory:', FILES_DIR);
-  }
-
-  if (!fs.existsSync(METADATA_FILE)) {
-    fs.writeFileSync(METADATA_FILE, '', 'utf-8');
-    log.info('[FileSync] Created metadata file:', METADATA_FILE);
-  }
-}
-
-/**
- * Load file IDs from metadata.txt
- */
-function loadLocalIds(): Set<string> {
-  try {
-    const content = fs.readFileSync(METADATA_FILE, 'utf-8');
-    const ids = content
-      .split('\n')
-      .map(line => line.trim())
-      .filter(line => line.length > 0);
-    
-    return new Set(ids);
-  } catch (error) {
-    log.error('[FileSync] Error loading metadata:', error);
-    return new Set();
-  }
-}
-
-/**
- * Append file ID to metadata.txt
- */
-function appendToMetadata(id: string): void {
-  try {
-    fs.appendFileSync(METADATA_FILE, id + '\n', 'utf-8');
-  } catch (error) {
-    log.error('[FileSync] Error appending to metadata:', error);
-  }
-}
-
-/**
- * Save all IDs to metadata.txt (used after deletion)
- */
-function saveMetadata(ids: Set<string>): void {
-  try {
-    const content = Array.from(ids).join('\n') + '\n';
-    fs.writeFileSync(METADATA_FILE, content, 'utf-8');
-  } catch (error) {
-    log.error('[FileSync] Error saving metadata:', error);
-  }
-}
-
-/**
- * Delete orphaned files (local but not on server)
- */
-function deleteOrphanedFiles(orphanedIds: string[]): void {
-  log.info('[FileSync] Deleting', orphanedIds.length, 'orphaned files...');
-  
-  for (const id of orphanedIds) {
-    try {
-      const filePath = path.join(FILES_DIR, id);
-      
-      if (fs.existsSync(filePath)) {
-        fs.rmSync(filePath, { recursive: true, force: true });
-        log.debug('[FileSync] Deleted:', id);
-      }
-      
-      // Remove from local IDs
-      localIds.delete(id);
-      
-    } catch (error) {
-      log.error('[FileSync] Failed to delete', id, ':', error);
-    }
-  }
-  
-  // Save updated metadata
-  saveMetadata(localIds);
-  log.info('[FileSync] Orphaned files deleted');
-}
-
-/**
- * Request signed URLs from server
- */
-function requestSignedUrls(fileIds: string[]): void {
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
-    log.error('[FileSync] Cannot request URLs - WebSocket not connected');
-    isSyncing = false;
-    return;
-  }
-
-  log.debug('[FileSync] Requesting signed URLs for', fileIds.length, 'files...');
-
-  try {
-    ws.send(JSON.stringify({
-      type: 'request_signed_urls',
-      file_ids: fileIds
-    }));
-    log.debug('[FileSync] Signed URL request sent');
-  } catch (error) {
-    log.error('[FileSync] Failed to request signed URLs:', error);
-    isSyncing = false;
-  }
-}
-
-/**
- * Download a file from signed URL
+ * Download a file from signed URL into files/{file_id}/{file_name}.
  */
 function downloadFile(id: string, fileName: string, signedUrl: string): Promise<void> {
   return new Promise((resolve, reject) => {
     try {
       log.debug('[FileSync] Signed URL:', signedUrl);
-      
-      // Create directory for this file
+
       const fileDir = path.join(FILES_DIR, id);
       if (!fs.existsSync(fileDir)) {
         fs.mkdirSync(fileDir, { recursive: true });
       }
-      
+
       const filePath = path.join(fileDir, fileName);
       log.debug('[FileSync] Saving file to:', filePath);
-      
+
       const fileStream = fs.createWriteStream(filePath);
-      
-      // Download via HTTPS
+
       https.get(signedUrl, (response) => {
         if (response.statusCode !== 200) {
           reject(new Error(`HTTP ${response.statusCode}: ${response.statusMessage}`));
           return;
         }
-        
+
         response.pipe(fileStream);
-        
+
         fileStream.on('finish', () => {
           fileStream.close();
           resolve();
         });
-        
+
         fileStream.on('error', (error) => {
-          try {
-            fs.unlinkSync(filePath); // Delete partial file
-          } catch (unlinkError) {
-            // File might not exist yet, ignore
-          }
+          try { fs.unlinkSync(filePath); } catch { /* partial file may not exist */ }
           reject(error);
         });
-        
+
       }).on('error', (error) => {
         reject(error);
       });
-      
+
     } catch (error) {
       reject(error);
     }
   });
 }
-

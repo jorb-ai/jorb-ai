@@ -188,7 +188,6 @@ function handleServerMessage(message: any): void {
   // Registration confirmation
   if (message.type === 'registered') {
     log.info(`[WebSocket] Registered — user: ${message.user_id}`);
-    FileSync.requestFileSync();
     return;
   }
 
@@ -199,24 +198,17 @@ function handleServerMessage(message: any): void {
     return;
   }
 
-  // File sync messages
-  if (message.type === 'file_sync_metadata') {
-    log.debug(`[WebSocket] file_sync_metadata — count: ${message.files?.length ?? 0}`);
-    FileSync.handleSyncMetadata(message.files);
-    return;
-  }
-  if (message.type === 'signed_urls') {
-    log.debug(`[WebSocket] signed_urls — count: ${message.files?.length ?? 0}`);
-    FileSync.handleSignedUrls(message.files);
-    return;
-  }
-  if (message.type === 'file_sync_acknowledged') {
-    return;
-  }
-  // Triggered by tailor.py after PDF upload — re-sync files
+  // File sync: single-round-trip trigger from tailor.py. Payload carries
+  // the signed URL inline; the desktop downloads, writes to
+  // files/{file_id}/{file_name}, and acks. No metadata listing, no
+  // separate signed-URL request.
   if (message.type === 'file_sync_trigger') {
     log.info(`[WebSocket] file_sync_trigger — file_id: ${message.file_id}`);
-    FileSync.requestFileSync();
+    FileSync.handleSyncTrigger({
+      file_id: message.file_id,
+      file_name: message.file_name,
+      signed_url: message.signed_url,
+    });
     return;
   }
 

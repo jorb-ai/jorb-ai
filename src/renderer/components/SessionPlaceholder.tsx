@@ -51,7 +51,9 @@ export const SessionPlaceholder: React.FC<SessionPlaceholderProps> = ({ job }) =
       eyebrowClass = 'placeholder__eyebrow--queued';
       meta = 'Waiting for worker capacity';
       body = 'Your session will open here the moment a worker claims it. You can keep browsing in the meantime — nothing is blocked.';
-      hint = 'Cap: 5 concurrent sessions';
+      // Keep this string in lockstep with `MAX_BROWSER_JOB_SESSIONS` in
+      // `src/main/panels.ts` (mirrored per workstreams/browser/contracts.md C9).
+      hint = 'Cap: 15 concurrent sessions';
       break;
     case 'completed':
       eyebrowMark = <span className="placeholder__mark" aria-hidden>{'✓'}</span>;

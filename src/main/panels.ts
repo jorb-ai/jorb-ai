@@ -11,7 +11,7 @@ import { IpcChannel } from '../types/ipc.types';
 // with `__`, e.g. `__webapp__`, `__gmail__`, `__outlook__`) are
 // long-lived ambient shells for sidebar nav and are EXCLUDED from this
 // cap so adding a new sidebar item can never shrink the job budget.
-const MAX_BROWSER_JOB_SESSIONS = 5;
+const MAX_BROWSER_JOB_SESSIONS = 15;
 const NAVIGATE_TIMEOUT_MS = 30_000;
 const PORTAL_PARTITION = 'persist:portal';
 
@@ -142,13 +142,14 @@ export function init(window: BrowserWindow, bounds: PanelBounds): void {
   parentWindow = window;
   currentBounds = bounds;
   // Electron adds an internal 'closed' listener per attached BrowserView.
-  // With `MAX_BROWSER_JOB_SESSIONS = 5` (up to 2 views each: A + B
-  // tailor) plus the system views (`__webapp__`, `__gmail__`,
-  // `__outlook__`), steady-state can reach 13+ listeners on the parent
-  // window. The default limit of 10 triggers a benign but noisy warning.
-  // Bump to a safe ceiling. Revisit if a future Electron version changes
-  // the internal listener accounting.
-  window.setMaxListeners(30);
+  // Steady-state is `MAX_BROWSER_JOB_SESSIONS * 2` (viewA + viewB tailor per
+  // session) plus the 3 system views (`__webapp__`, `__gmail__`,
+  // `__outlook__`). Default limit (10) triggers a noisy warning past that.
+  // Derive the ceiling from the cap so vertical-scaling cap raises (see
+  // `workstreams/browser/architecture.md` "Scaling Posture") never need
+  // a manual revisit here. +20 buffer covers system views and any small
+  // accounting drift in Electron's internal listener bookkeeping.
+  window.setMaxListeners(MAX_BROWSER_JOB_SESSIONS * 2 + 20);
 }
 
 export function createSession(sessionId: string): boolean {
