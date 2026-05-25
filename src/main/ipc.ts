@@ -3,7 +3,7 @@ import log, { tokenPrefix } from './logger';
 import { IpcChannel } from '../types/ipc.types';
 import { getConfig, setConfig } from './config';
 import { handleAuthToken } from './auth';
-import { sendStopAutomation } from './websocket-client';
+import { sendStopAutomation, sendUserContinued } from './websocket-client';
 import { closeBrowserJob } from './http-client';
 import {
   showSession,
@@ -11,6 +11,7 @@ import {
   getSessionCount,
   isAtCapacity,
   showOrNavigateSession,
+  showOrNavigateInbox,
   hasTailorView,
 } from './panels';
 import { setActionBarHeight } from './windows';
@@ -52,6 +53,11 @@ export function registerIpcHandlers(): void {
     sendStopAutomation(args.jobId);
   });
 
+  ipcMain.handle(IpcChannel.BROWSER_CONTINUE, async (_event: IpcMainInvokeEvent, args: { jobId: string }) => {
+    log.info('[IPC] Continue automation — job:', args.jobId);
+    sendUserContinued(args.jobId);
+  });
+
   ipcMain.handle(IpcChannel.BROWSER_CLOSE, async (_event: IpcMainInvokeEvent, args: { jobId: string }) => {
     log.info('[IPC] Close session — job:', args.jobId);
     await closeBrowserJob(args.jobId);
@@ -72,6 +78,24 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IpcChannel.SESSION_DESTROY, async (_event: IpcMainInvokeEvent, args: { sessionId: string }) => {
     destroySession(args.sessionId);
   });
+
+  // Inbox-access: open / re-search a per-inbox BrowserView. Used by:
+  //   - sidebar InboxRow click (no url -> show existing tab; create at
+  //     Gmail root only if missing)
+  //   - JorbHeader pre-search affordance (url = the EmailAgent's exact
+  //     search URL, lands the user pre-searched for the right sender).
+  // The explicit-url path navigates even if the session exists, side-stepping
+  // the origin-match short-circuit that would swallow Gmail-search fragment
+  // changes.
+  ipcMain.handle(
+    IpcChannel.SESSION_SHOW_OR_NAVIGATE_INBOX,
+    async (
+      _event: IpcMainInvokeEvent,
+      args: { sessionId: string; url?: string },
+    ) => {
+      await showOrNavigateInbox(args.sessionId, args.url);
+    },
+  );
 
   ipcMain.handle(IpcChannel.SESSION_STATUS, async () => {
     return { count: getSessionCount(), atCapacity: isAtCapacity() };

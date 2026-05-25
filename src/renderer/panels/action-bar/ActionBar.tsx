@@ -1,40 +1,104 @@
 import React, { useEffect, useMemo } from 'react';
-import type { BrowserJobRow, BrowserEvent } from '../../types';
-import { deriveDisplayStatus } from '../../types';
+import type {
+  BrowserEvent,
+  BrowserJobRow,
+  PausedForUserReason,
+} from '../../types';
+import { deriveDisplayStatus, latestPausedForUser } from '../../types';
 import { JorbHeader } from '../../components/JorbHeader';
+import { useInboxStatus } from '../../hooks/useInboxStatus';
 
 interface ActionBarProps {
   activeJob: BrowserJobRow | null;
+  /** The system tab on top (`__webapp__`, `__inbox_<id>__`), or null
+   * when an agent session is active. */
+  activeNavId: string | null;
+  /** All browser_jobs the renderer knows about. Used by the inbox-tab
+   * cross-actor speech branch (C14) to detect any running apply session
+   * that is currently `paused_for_user`. */
+  sessions: BrowserJobRow[];
   onStop: (jobId: string) => void;
+  /** Inbox-access (C13): user clicked Continue in `paused_for_user`. */
+  onContinue: (jobId: string) => void;
 }
 
 /*
- * The bar is binary: hidden when no agent session is the active tab, or the
- * 96px JorbHeader for every agent-session state. The old 44px collapsed
- * strip is gone; one narrative element is reused across every state.
+ * Modes drive height + which JorbHeader trailing buttons render.
+ *
+ *   hidden            -> bar height 0; BrowserView fills middle panel
+ *                        (idle, or active __webapp__ tab)
+ *   inbox_tab         -> bar height 96; JorbHeader only (no buttons),
+ *                        three-way speech derive (reading > cross-actor
+ *                        paused > idle)
+ *   queued            -> bar height 96; JorbHeader, no buttons
+ *   running           -> bar height 96; JorbHeader + Stop
+ *   needs_review      -> bar height 96; JorbHeader + Stop (tailor ready)
+ *   paused_for_user   -> bar height 122; JorbHeader + Stop + Continue +
+ *                        optional pre-search affordance under the bubble
+ *                        (the 122 variant; speech wraps 2-3 lines here)
+ *   completed/failed/stopped -> bar height 96; JorbHeader, no buttons
  */
 type Mode =
   | 'hidden'
+  | 'inbox_tab'
   | 'queued'
   | 'running'
-  | 'needs_review'   // tailor_ready seen: the document is waiting on the user
+  | 'needs_review'
+  | 'paused_for_user'
   | 'completed'
   | 'failed'
   | 'stopped';
 
 const BAR_HEIGHT = 96;
+const BAR_HEIGHT_PAUSED = 122;
+const INBOX_TAB_PREFIX = '__inbox_';
+
+const INBOX_TAB_SPEECH_READING =
+  "Reading your inbox right now for a verification code...";
+const INBOX_TAB_SPEECH_CROSS_ACTOR_PAUSED =
+  "Find the verification code in your inbox, then return to your apply tab to type it in and hit Continue.";
+const INBOX_TAB_SPEECH_IDLE =
+  "I'll check your inbox for verification codes when you apply.";
+
+/**
+ * Inbox-access give_up taxonomy -> tab-agnostic speech variant (C13).
+ * Server emits the reason code; renderer owns the speech strings so
+ * copy iteration stays in the renderer. Every variant references "your
+ * apply form" (NEVER "the form below") because the user often re-reads
+ * the speech while on the inbox tab.
+ */
+const PAUSED_FOR_USER_SPEECH: Record<PausedForUserReason, string> = {
+  no_inbox_connected:
+    "I can't reach your inbox yet. Click Connect inbox in the sidebar, find the code there, type it into your apply form, then hit Continue.",
+  user_not_logged_in:
+    "You're signed out of your inbox. Open it from the sidebar to sign back in, find the code, type it into your apply form, then hit Continue.",
+  no_matching_email:
+    "I checked the inboxes I know about and didn't find a code. Look in your inbox tab, type the code into your apply form, then hit Continue.",
+  multiple_candidates_ambiguous:
+    "I found multiple possible emails. Check your inbox tab for the right code, type it into your apply form, then hit Continue.",
+  email_unreadable:
+    "I couldn't parse the verification email. Check your inbox tab, find the code, type it into your apply form, then hit Continue.",
+  session_expired_mid_read:
+    "Gmail asked me to re-authenticate. Sign in again via the inbox tab in your sidebar, find the code, type it into your apply form, then hit Continue.",
+};
+
+const PAUSED_FOR_USER_FALLBACK =
+  "I need your help finishing this step. Find the verification code in your inbox, type it into your apply form, then hit Continue.";
+
 
 /* ── Derivations ──────────────────────────────────────────────────── */
 
-/*
- * One source of truth: the bar mode is the shared session display status
- * (`deriveDisplayStatus`, also used by the sidebar), with `needs_attention`
- * surfaced as `needs_review` plus a `hidden` case for no active job.
- */
-function deriveMode(job: BrowserJobRow | null): Mode {
-  if (!job) return 'hidden';
-  const status = deriveDisplayStatus(job);
-  return status === 'needs_attention' ? 'needs_review' : status;
+function deriveMode(activeJob: BrowserJobRow | null, activeNavId: string | null): Mode {
+  if (activeJob) {
+    const status = deriveDisplayStatus(activeJob);
+    if (status === 'needs_attention') return 'needs_review';
+    if (status === 'paused_for_user') return 'paused_for_user';
+    return status as Mode;
+  }
+  if (activeNavId && activeNavId.startsWith(INBOX_TAB_PREFIX)) {
+    return 'inbox_tab';
+  }
+  return 'hidden';
 }
 
 function stripTrailingDots(s: string): string {
@@ -53,15 +117,8 @@ function currentDocType(events: BrowserEvent[]): 'resume' | 'cover_letter' | nul
   return null;
 }
 
-/*
- * The single line Jorb says in the speech bubble. One JorbHeader carries
- * every state (running narration, the approval ask, the terminal sign-off);
- * the bubble itself never changes color, so the per-state signal lives on
- * the sidebar row, not on Jorb.
- */
-function deriveSpeech(mode: Mode, job: BrowserJobRow): string {
+function deriveJobSpeech(mode: Mode, job: BrowserJobRow): string {
   const events: BrowserEvent[] = job.events || [];
-
   switch (mode) {
     case 'queued':
       return "You're in the queue. I'll start as soon as a worker is free.";
@@ -69,6 +126,14 @@ function deriveSpeech(mode: Mode, job: BrowserJobRow): string {
       const t = currentDocType(events);
       const doc = t === 'resume' ? 'resume' : t === 'cover_letter' ? 'cover letter' : 'document';
       return `Your ${doc} is ready. Review it and approve below to continue.`;
+    }
+    case 'paused_for_user': {
+      const paused = latestPausedForUser(job);
+      const reason = paused?.reason as PausedForUserReason | undefined;
+      if (reason && reason in PAUSED_FOR_USER_SPEECH) {
+        return PAUSED_FOR_USER_SPEECH[reason];
+      }
+      return PAUSED_FOR_USER_FALLBACK;
     }
     case 'completed':
       return "All done. I've submitted your application.";
@@ -79,42 +144,143 @@ function deriveSpeech(mode: Mode, job: BrowserJobRow): string {
     case 'running':
     default: {
       const last = events[events.length - 1];
-      if (!last) return 'Booting up, opening the application page.';
+      if (!last || !last.message) return 'Booting up, opening the application page.';
       return stripTrailingDots(last.message);
     }
   }
 }
 
+/** Inbox-tab three-way speech derive (C14). Reading wins over cross-actor
+ * paused; paused wins over idle. */
+function deriveInboxTabSpeech(
+  inboxId: string,
+  reading: boolean,
+  sessions: BrowserJobRow[],
+): string {
+  if (reading) return INBOX_TAB_SPEECH_READING;
+  for (const job of sessions) {
+    if (job.status !== 'running') continue;
+    const paused = latestPausedForUser(job);
+    if (paused) return INBOX_TAB_SPEECH_CROSS_ACTOR_PAUSED;
+  }
+  return INBOX_TAB_SPEECH_IDLE;
+  // Note: we deliberately do NOT scope the cross-actor branch to "this
+  // specific inbox is the one the EmailAgent was using" - any
+  // paused_for_user in flight means the user is in a verification
+  // workflow that needs them. The pre-search affordance on the apply
+  // tab uses the exact inbox_id the event carries; here on the inbox
+  // tab the speech is workflow-wide.
+}
+
+function inboxShortIdFromSession(sessionId: string): string {
+  return sessionId.slice(INBOX_TAB_PREFIX.length, INBOX_TAB_PREFIX.length + 8);
+}
+
+
 /* ── Component ────────────────────────────────────────────────────── */
 
-export const ActionBar: React.FC<ActionBarProps> = ({ activeJob, onStop }) => {
-  const mode = deriveMode(activeJob);
+export const ActionBar: React.FC<ActionBarProps> = ({
+  activeJob,
+  activeNavId,
+  sessions,
+  onStop,
+  onContinue,
+}) => {
+  const mode = deriveMode(activeJob, activeNavId);
+  const inboxStatusMap = useInboxStatus();
 
-  // Tell main the bar height so BrowserView bounds re-flow under it. The
-  // bar is binary now: 0 when hidden, 96 otherwise.
+  // Bar height: hidden -> 0; paused_for_user -> 122 (room for the
+  // 2-3 line speech variant + the pre-search affordance row); anything
+  // else -> 96. Renderer pushes this to main so BrowserView bounds
+  // re-flow under the bar.
   useEffect(() => {
-    window.Finbro.panel.setBarHeight(mode === 'hidden' ? 0 : BAR_HEIGHT);
+    let h = 0;
+    if (mode !== 'hidden') {
+      h = mode === 'paused_for_user' ? BAR_HEIGHT_PAUSED : BAR_HEIGHT;
+    }
+    window.Finbro.panel.setBarHeight(h);
   }, [mode]);
 
-  const speech = useMemo(
-    () => (activeJob ? deriveSpeech(mode, activeJob) : ''),
-    [mode, activeJob],
-  );
+  const speech = useMemo(() => {
+    if (mode === 'inbox_tab' && activeNavId) {
+      // The inbox-tab session id encodes only the first 8 chars of the
+      // inbox uuid. The reading map is keyed by FULL uuid (server-side
+      // emits inbox_status_changed.inbox_id = full uuid). Reverse-lookup
+      // by prefix.
+      const short = inboxShortIdFromSession(activeNavId);
+      let reading = false;
+      inboxStatusMap.forEach((v, k) => {
+        if (v && k.startsWith(short)) reading = true;
+      });
+      return deriveInboxTabSpeech(activeNavId, reading, sessions);
+    }
+    if (activeJob) return deriveJobSpeech(mode, activeJob);
+    return '';
+  }, [mode, activeJob, activeNavId, sessions, inboxStatusMap]);
 
-  if (mode === 'hidden' || !activeJob) return null;
+  if (mode === 'hidden') return null;
 
-  // Stop is offered only while the agent is mid-run or waiting on the user.
-  // Terminal and not-yet-started jobs have nothing to stop.
-  const canStop = mode === 'running' || mode === 'needs_review';
-  const trailing = canStop ? (
-    <button className="action-bar__stop" onClick={() => onStop(activeJob.id)}>
-      Stop
-    </button>
+  // Inbox tabs have no buttons (observation-only) - the apply session
+  // that's paused is stopped from its own tab.
+  if (mode === 'inbox_tab') {
+    return (
+      <div className="action-bar action-bar--inbox-tab">
+        <JorbHeader speech={speech} />
+      </div>
+    );
+  }
+
+  // Stop is offered only while the agent is mid-run, waiting on the
+  // user, or paused-for-user. Terminal and not-yet-started jobs have
+  // nothing to stop.
+  const canStop =
+    mode === 'running' || mode === 'needs_review' || mode === 'paused_for_user';
+  const canContinue = mode === 'paused_for_user';
+
+  const pausedEvent = mode === 'paused_for_user' && activeJob ? latestPausedForUser(activeJob) : null;
+  const preSearchInboxId = pausedEvent?.inbox_id;
+  const preSearchUrl = pausedEvent?.gmail_search_url;
+
+  const handlePreSearch = () => {
+    if (!preSearchInboxId || !preSearchUrl) return;
+    const sid = `${INBOX_TAB_PREFIX}${preSearchInboxId.slice(0, 8)}__`;
+    window.Finbro.session.showOrNavigateInbox(sid, preSearchUrl);
+  };
+
+  const trailing = (canStop || canContinue) ? (
+    <>
+      {canStop && (
+        <button className="action-bar__stop" onClick={() => onStop(activeJob!.id)}>
+          Stop
+        </button>
+      )}
+      {canContinue && (
+        <button
+          className="action-bar__continue"
+          onClick={() => onContinue(activeJob!.id)}
+        >
+          Continue
+        </button>
+      )}
+    </>
   ) : undefined;
 
+  const preSearchAffordance =
+    mode === 'paused_for_user' && preSearchInboxId && preSearchUrl ? (
+      <button
+        className="jorb-header__presearch"
+        onClick={handlePreSearch}
+        type="button"
+      >
+        {'▸ '}Open your inbox pre-searched for the sender I expected
+      </button>
+    ) : undefined;
+
+  const barClassName = `action-bar ${mode === 'paused_for_user' ? 'action-bar--paused' : ''}`.trim();
+
   return (
-    <div className="action-bar">
-      <JorbHeader speech={speech} trailing={trailing} />
+    <div className={barClassName}>
+      <JorbHeader speech={speech} trailing={trailing} belowSpeech={preSearchAffordance} />
     </div>
   );
 };

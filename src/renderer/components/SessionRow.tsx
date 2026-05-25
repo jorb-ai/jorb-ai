@@ -30,8 +30,10 @@ function modifierClass(status: SessionDisplayStatus, acknowledged: boolean): str
       return acknowledged ? '' : 'session-row--completed';
     case 'failed':    return 'session-row--failed';
     case 'needs_attention':
-      // tailor_ready seen, not yet approved: the agent is waiting on the
-      // user. Amber tint, same ambient-tint family as completed / failed.
+    case 'paused_for_user':
+      // tailor_ready seen OR inbox-access give_up: the agent is waiting on
+      // the user. Same "your turn" amber pulse signal regardless of which
+      // intervention surface (viewB tailor approval vs action-bar Continue).
       return 'session-row--needs-attention';
     case 'running':
       // Agent working here, including the tailoring sub-flow before the

@@ -14,6 +14,13 @@ export enum IpcChannel {
   SESSION_SHOW_TAILOR = 'session:show-tailor',
   SESSION_DESTROY = 'session:destroy',
   SESSION_STATUS = 'session:status',
+  // Inbox-access: open / navigate the per-inbox BrowserView. Distinct
+  // from PANEL_NAVIGATE because the inbox view ALWAYS navigates on this
+  // call even when the session already exists at the same origin
+  // (Gmail-search URL fragment changes between calls; the generic
+  // showOrNavigateSession's origin-match short-circuit would swallow
+  // the pre-search affordance). See workstreams/browser/inbox-access.md.
+  SESSION_SHOW_OR_NAVIGATE_INBOX = 'session:show-or-navigate-inbox',
   // One-way main → renderer push: fired whenever panels.ts:showSession
   // brings a session to the front. Lets the renderer mirror activeJobId
   // when the worker auto-jumps via the `navigate` WS command. Without
@@ -29,6 +36,11 @@ export enum IpcChannel {
 
   // Browser automation
   BROWSER_STOP = 'browser:stop',
+  // Inbox-access: user clicked Continue in the action bar after a
+  // `paused_for_user` event. Fires `{type: 'user_continued', job_id}`
+  // over WS. The existing Stop button is unchanged across this build;
+  // Continue is the only new chrome the inbox-access work adds.
+  BROWSER_CONTINUE = 'browser:continue',
   // User clicked X on a sidebar row — server stops (if running) + deletes
   // the browser_jobs row. Distinct from BROWSER_STOP, which only halts
   // execution and leaves the row.

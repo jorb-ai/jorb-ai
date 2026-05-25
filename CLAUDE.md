@@ -24,7 +24,7 @@ For the full system architecture, read the HQ workstream:
 - `workstreams/browser/architecture.md` for the full system architecture
 - `workstreams/browser/files.md` for the exhaustive cross-repo file map
 - `workstreams/browser/contracts.md` for cross-repo couplings (mandatory pre-read before any cross-repo edit)
-- `workstreams/browser/qa.md` for the architectural-decisions record
+- `workstreams/browser/changelog.md` for the architectural-decisions record
 
 ## Architecture
 
@@ -56,17 +56,19 @@ One BrowserWindow with a floating sidebar over a flush middle. The sidebar is a 
 
 - Window background: solid white (`#FFFFFF`)
 - LEFT sidebar zone: **190px** (180px frosted-glass card plus 6px L/T/B gutter and 4px R gutter, 14px radius, `backdrop-filter: blur(24px) saturate(180%)`, `rgba(255,255,255,0.72)` fill, elevated drop shadow plus a 1px subtle border for white-on-white separation)
-- Middle action bar: **0 hidden / 96 JorbHeader** (variable)
+- Middle action bar: **0 hidden / 96 JorbHeader / 122 paused_for_user** (variable)
 - Browser area fills the rest
 
-### Action-bar state machine (binary: hidden, or the 96px JorbHeader)
+### Action-bar state machine (0 hidden / 96 JorbHeader / 122 in `paused_for_user`)
 
 | Active tab | Height | Content |
 |---|---|---|
-| idle / `__webapp__` / `__gmail__` / `__outlook__` | **0** | Hidden. BrowserView fills the middle panel top-to-bottom. |
-| any agent session (`queued` / `running` / `needs_review` / `completed` / `failed` / `stopped`) | **96** | JorbHeader: 60px mascot video plus speech bubble. Only the speech line changes per state. The bubble is one constant purple, the bar never changes shape or color. Stop button only while `running` / `needs_review`. |
+| idle / `__webapp__` | **0** | Hidden. BrowserView fills the middle panel top-to-bottom. |
+| any `__inbox_<id>__` | **96** | JorbHeader: mascot plus inbox-context speech bubble, no buttons. Speech is `"Reading your inbox right now for a verification code..."` when the EmailAgent is reading this inbox (per `inbox_status_changed.reading: true` from the server); `"I'll check your inbox for verification codes when you apply."` otherwise. |
+| any agent session (`queued` / `running` / `needs_review` / `completed` / `failed` / `stopped`) | **96** | JorbHeader: 60px mascot video plus speech bubble. Only the speech line changes per state. The bubble is one constant purple. **Stop button** (existing) visible during `running` / `needs_review` / `paused_for_user`. |
+| agent session in `paused_for_user` (inbox-access give_up) | **122** | JorbHeader with the longer reason-specific speech variant + the `▸ Open your inbox pre-searched…` affordance below the bubble when the event carries `gmail_search_url`. **Continue button** (new, inbox-access) visible only here, right of Stop with a 16px gap, filled primary purple. Bar grows 96 → 122 in this one state so the longer copy + affordance fit cleanly. |
 
-Renderer notifies main of the current bar height via `window.Finbro.panel.setBarHeight(h)` (0 or 96). `windows.ts`'s `setActionBarHeight` re-flows `BrowserView` bounds whenever the bar shows or hides.
+Renderer notifies main of the current bar height via `window.Finbro.panel.setBarHeight(h)` (0, 96, or 122 — 122 is the paused_for_user variant). `windows.ts`'s `setActionBarHeight` re-flows `BrowserView` bounds whenever the bar height changes.
 
 ### Worker-driven navigate loads in the background
 
@@ -118,7 +120,7 @@ src/
 │   ├── config.ts                electron-store config
 │   ├── windows.ts               Two-panel bounds. setActionBarHeight(h)
 │   │                            re-flows BrowserView bounds when the
-│   │                            renderer bar toggles between 0 and 96.
+│   │                            renderer bar toggles 0 / 96 / 122.   
 │   ├── panels.ts                Multi-session BrowserView manager.
 │   │                            navigateSession takes options.autoShow
 │   │                            (default true). showSession fires
@@ -220,7 +222,7 @@ Single WebSocket is the ONE data channel between this shell and `web-api`. Every
 | `window.Finbro` | Preload bridge for main renderer | Main <-> Renderer |
 | `window.finbro` | Auth token push from webapp (in BrowserView) | BrowserView -> Main |
 
-Supabase Realtime is NOT used by this renderer. All data (list plus live updates for `browser_jobs` and `agent_jobs`) flows over the WS via `rpc-bridge.ts` plus `rpc.ts`. See `workstreams/browser/qa.md` R22 for why.
+Supabase Realtime is NOT used by this renderer. All data (list plus live updates for `browser_jobs` and `agent_jobs`) flows over the WS via `rpc-bridge.ts` plus `rpc.ts`. See `workstreams/browser/changelog.md` 2026-04-11 "Dumb-terminal data plane" for why.
 
 ## Rules
 
@@ -228,7 +230,7 @@ Supabase Realtime is NOT used by this renderer. All data (list plus live updates
 2. WebSocket is the single data channel. No parallel Supabase client, no Supabase Realtime, no other external network surface.
 3. Do not inject DOM into any BrowserView. CDP isolation for viewA must be preserved.
 4. Do not import `@supabase/supabase-js` in the renderer. Enforced by `package.json` (no dep) and by CSP `connect-src 'self'`.
-5. BrowserView partition is `persist:portal`, isolates cookies from the main renderer process.
+5. BrowserView partition is `persist:portal` for portal (viewA) and webapp (viewB / `__webapp__`) views, isolating cookies from the main renderer. Inbox views (`__inbox_<id>__`, one per row in `user_inboxes`) use per-inbox partitions `persist:inbox_<id>` so connected accounts are isolated from `persist:portal` and from each other. See `workstreams/browser/inbox-access.md`.
 6. `MAX_BROWSER_JOB_SESSIONS = 15` must equal `MAX_CONCURRENT_BROWSER_JOBS` in `web-api/finbroapi/src/browser_worker/main.py` (see `workstreams/browser/contracts.md` C9). Cap-raise rationale and the vertical-scaling tiers live in `workstreams/browser/architecture.md` "Scaling Posture".
 7. Do not reintroduce a right panel. Phase 5 was a deliberate removal. Intervention signals live in the action-bar transform, and the Approve affordance lives inside the tailor page per QA R26.
 8. Do not name colors after products ("brand", "finbroPurple"). Generic tokens only (`primary`, `neutral*`, `success` / `warning` / `danger`).

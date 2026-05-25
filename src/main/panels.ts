@@ -8,24 +8,54 @@ import { IpcChannel } from '../types/ipc.types';
 // browser_jobs row, plus optional viewB for tailor). Must match
 // `MAX_CONCURRENT_BROWSER_JOBS` on the `web-api` side — see
 // `workstreams/browser/contracts.md` C9. System sessions (ids prefixed
-// with `__`, e.g. `__webapp__`, `__gmail__`, `__outlook__`) are
+// with `__`, for example `__webapp__` and `__inbox_<id>__`) are
 // long-lived ambient shells for sidebar nav and are EXCLUDED from this
 // cap so adding a new sidebar item can never shrink the job budget.
 const MAX_BROWSER_JOB_SESSIONS = 15;
 const NAVIGATE_TIMEOUT_MS = 30_000;
 const PORTAL_PARTITION = 'persist:portal';
+const INBOX_SESSION_PREFIX = '__inbox_';
+const INBOX_SESSION_SUFFIX = '__';
+const INBOX_PARTITION_PREFIX = 'persist:inbox_';
 
 function isSystemSessionId(id: string): boolean {
   return id.startsWith('__');
 }
 
-let portalSession: Electron.Session | null = null;
+function isInboxSessionId(id: string): boolean {
+  // `__inbox_<8-char-id>__` shape - see workstreams/browser/contracts.md C12.
+  // Both sides MUST compute the partition / session id identically; the
+  // server uses `inbox_session_id(uuid)` in email_agent.py.
+  return (
+    id.startsWith(INBOX_SESSION_PREFIX) &&
+    id.endsWith(INBOX_SESSION_SUFFIX) &&
+    id.length === INBOX_SESSION_PREFIX.length + 8 + INBOX_SESSION_SUFFIX.length
+  );
+}
 
-function getPortalSession(): Electron.Session {
-  if (!portalSession) {
-    portalSession = electronSession.fromPartition(PORTAL_PARTITION);
+function inboxShortIdFromSession(id: string): string {
+  // Caller guarantees `isInboxSessionId(id)`.
+  return id.slice(INBOX_SESSION_PREFIX.length, INBOX_SESSION_PREFIX.length + 8);
+}
+
+function partitionForSession(id: string): string {
+  if (isInboxSessionId(id)) return INBOX_PARTITION_PREFIX + inboxShortIdFromSession(id);
+  return PORTAL_PARTITION;
+}
+
+// Memoised Session references per partition. Electron's
+// `session.fromPartition` is documented as returning the same instance
+// for the same partition string, but caching keeps the call hot-path
+// allocation-free.
+const partitionCache = new Map<string, Electron.Session>();
+
+function sessionForPartition(partition: string): Electron.Session {
+  let s = partitionCache.get(partition);
+  if (!s) {
+    s = electronSession.fromPartition(partition);
+    partitionCache.set(partition, s);
   }
-  return portalSession;
+  return s;
 }
 
 export interface PanelBounds {
@@ -55,14 +85,14 @@ const sessions = new Map<string, Session>();
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-function makeView(preloadName: string): BrowserView {
+function makeView(preloadName: string, partition: string = PORTAL_PARTITION): BrowserView {
   const view = new BrowserView({
     webPreferences: {
       preload: path.join(__dirname, `../preload/${preloadName}.js`),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      session: getPortalSession(),
+      session: sessionForPartition(partition),
     },
   });
 
@@ -143,8 +173,8 @@ export function init(window: BrowserWindow, bounds: PanelBounds): void {
   currentBounds = bounds;
   // Electron adds an internal 'closed' listener per attached BrowserView.
   // Steady-state is `MAX_BROWSER_JOB_SESSIONS * 2` (viewA + viewB tailor per
-  // session) plus the 3 system views (`__webapp__`, `__gmail__`,
-  // `__outlook__`). Default limit (10) triggers a noisy warning past that.
+  // session) plus sidebar/system views such as `__webapp__` and connected
+  // inboxes. Default limit (10) triggers a noisy warning past that.
   // Derive the ceiling from the cap so vertical-scaling cap raises (see
   // `workstreams/browser/architecture.md` "Scaling Posture") never need
   // a manual revisit here. +20 buffer covers system views and any small
@@ -166,12 +196,16 @@ export function createSession(sessionId: string): boolean {
     return false;
   }
 
-  const viewA = makeView('preload-webview');
+  const partition = partitionForSession(sessionId);
+  const viewA = makeView('preload-webview', partition);
   parentWindow.addBrowserView(viewA);
   applyBounds(viewA);
 
   sessions.set(sessionId, { viewA, viewB: null, tabId: null });
-  log.info(`[Panels] createSession(${sessionId.slice(0, 8)}) — created | total=${sessions.size} | jobs=${countJobSessions()}/${MAX_BROWSER_JOB_SESSIONS}`);
+  log.info(
+    `[Panels] createSession(${sessionId.slice(0, 12)}) — created | partition=${partition} ` +
+    `| total=${sessions.size} | jobs=${countJobSessions()}/${MAX_BROWSER_JOB_SESSIONS}`,
+  );
   return true;
 }
 
@@ -333,6 +367,40 @@ export async function showOrNavigateSession(sessionId: string, url: string): Pro
   await navigateSession(sessionId, url);
 }
 
+/**
+ * Inbox-specific "show or navigate". A missing url means "normal sidebar
+ * row click": show an existing inbox tab without reload, or create it at
+ * Gmail root if it does not exist yet. An explicit url means "pre-search
+ * affordance": force-load the Gmail search URL even when the session already
+ * exists. See workstreams/browser/inbox-access.md "Pre-search affordance".
+ */
+export async function showOrNavigateInbox(sessionId: string, url?: string): Promise<void> {
+  if (!isInboxSessionId(sessionId)) {
+    log.warn(`[Panels] showOrNavigateInbox(${sessionId.slice(0, 12)}) — non-inbox session id rejected`);
+    return;
+  }
+  const existing = sessions.get(sessionId);
+  if (existing && existing.tabId !== null) {
+    if (!url) {
+      log.info(`[Panels] showOrNavigateInbox(${sessionId.slice(0, 12)}) — existing tab, z-order switch`);
+      showSession(sessionId);
+      return;
+    }
+    log.info(`[Panels] showOrNavigateInbox(${sessionId.slice(0, 12)}) — existing tab, force-loadURL`);
+    try {
+      await existing.viewA.webContents.loadURL(url);
+    } catch (err) {
+      log.error(`[Panels] showOrNavigateInbox loadURL failed: ${(err as Error).message}`);
+    }
+    showSession(sessionId);
+    return;
+  }
+  // No view yet - createSession picks up the per-inbox partition from
+  // the session id and navigateSession brings the new view to the front
+  // (default autoShow:true).
+  await navigateSession(sessionId, url || 'https://mail.google.com/mail/u/0/');
+}
+
 export function showTailorView(sessionId: string, url: string): boolean {
   log.info(`[Panels] showTailorView(${sessionId.slice(0, 8)}) — url: ${url}`);
   const session = sessions.get(sessionId);
@@ -342,8 +410,14 @@ export function showTailorView(sessionId: string, url: string): boolean {
   }
 
   if (!session.viewB) {
-    log.info(`[Panels] showTailorView(${sessionId.slice(0, 8)}) — creating viewB`);
-    session.viewB = makeView('preload-webview');
+    // Derive viewB's partition from the session id so an inbox session's
+    // tailor view (should never happen today, but defense-in-depth) would
+    // share the inbox's cookie partition, not silently fall back to
+    // `persist:portal`. Browser-job sessions resolve to `persist:portal`
+    // exactly as before.
+    const partition = partitionForSession(sessionId);
+    log.info(`[Panels] showTailorView(${sessionId.slice(0, 12)}) — creating viewB | partition=${partition}`);
+    session.viewB = makeView('preload-webview', partition);
     parentWindow.addBrowserView(session.viewB);
   } else {
     log.debug(`[Panels] showTailorView(${sessionId.slice(0, 8)}) — viewB exists, reusing`);

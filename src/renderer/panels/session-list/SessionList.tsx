@@ -2,6 +2,7 @@ import React from 'react';
 import { SessionRow } from '../../components/SessionRow';
 import type { BrowserJobRow } from '../../types';
 import logoWordmark from '../../assets/logos/logo_wordmark.png';
+import { EmailsSection } from './EmailsSection';
 
 interface SessionListProps {
   sessions: BrowserJobRow[];
@@ -11,6 +12,7 @@ interface SessionListProps {
   onNavigate: (url: string, sessionId?: string) => void;
   onClose: (jobId: string) => void;
   activeNavId?: string | null;
+  emailsEnabled: boolean;
 }
 
 interface NavItem {
@@ -24,11 +26,6 @@ const NAV_DASHBOARD: NavItem[] = [
   { key: 'webapp',  label: 'Jorb AI Web',  url: 'http://localhost:3000',   sessionId: '__webapp__' },
 ];
 
-const NAV_EMAIL: NavItem[] = [
-  { key: 'gmail',   label: 'Gmail',        url: 'https://mail.google.com',  sessionId: '__gmail__' },
-  { key: 'outlook', label: 'Outlook',      url: 'https://outlook.live.com', sessionId: '__outlook__' },
-];
-
 export const SessionList: React.FC<SessionListProps> = ({
   sessions,
   activeJobId,
@@ -37,6 +34,7 @@ export const SessionList: React.FC<SessionListProps> = ({
   onNavigate,
   onClose,
   activeNavId,
+  emailsEnabled,
 }) => {
   const renderNavItem = (item: NavItem) => (
     <div
@@ -65,11 +63,12 @@ export const SessionList: React.FC<SessionListProps> = ({
           {NAV_DASHBOARD.map(renderNavItem)}
         </div>
 
-        {/* Emails */}
-        <div className="sidebar__section">
-          <div className="sidebar__header">Emails</div>
-          {NAV_EMAIL.map(renderNavItem)}
-        </div>
+        {/* Emails — user-added inboxes (inbox-access workstream). */}
+        <EmailsSection
+          enabled={emailsEnabled}
+          activeNavId={activeNavId ?? null}
+          onInboxOpen={(sid) => onNavigate('https://mail.google.com/mail/u/0/', sid)}
+        />
 
         {/* Applications — the live session list */}
         <div className="sidebar__section sidebar__section--grow">

@@ -33,9 +33,16 @@ function pickRandomJorbVideo(): string {
 interface JorbHeaderProps {
   speech: string;
   trailing?: React.ReactNode;
+  /** Optional secondary line rendered inside the bubble below the
+   * speech. Inbox-access uses this for the pre-search affordance
+   * (▸ Open your inbox pre-searched for the sender I expected) below
+   * the `paused_for_user` speech variant. Component-agnostic - any
+   * future "secondary action attached to the agent's speech" can pass
+   * a node here. */
+  belowSpeech?: React.ReactNode;
 }
 
-export const JorbHeader: React.FC<JorbHeaderProps> = ({ speech, trailing }) => {
+export const JorbHeader: React.FC<JorbHeaderProps> = ({ speech, trailing, belowSpeech }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const playingRef = useRef(false);
   const videoSrc = useMemo(() => pickRandomJorbVideo(), []);
@@ -80,6 +87,9 @@ export const JorbHeader: React.FC<JorbHeaderProps> = ({ speech, trailing }) => {
         <div className="jorb-header__bubble">
           <span className="jorb-header__eyebrow">Jorb</span>
           <p key={speech} className="jorb-header__speech jorb-header__speech--enter">{speech}</p>
+          {belowSpeech && (
+            <div className="jorb-header__below-speech">{belowSpeech}</div>
+          )}
         </div>
       </div>
       {trailing && <div className="jorb-header__trailing">{trailing}</div>}

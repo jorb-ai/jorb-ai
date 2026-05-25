@@ -16,12 +16,16 @@ import { IpcChannel } from '../types/ipc.types';
  */
 
 // Renderer → server: only data-plane requests owned by rpc.ts. Dedicated
-// IPC channels (browser:stop, session:*, panel:*) have their own
-// validation paths and do not come through rpc:request.
+// IPC channels (browser:stop, browser:continue, session:*, panel:*) have
+// their own validation paths and do not come through rpc:request.
 const RENDERER_ALLOWED_MSG_TYPES: ReadonlySet<string> = new Set([
   'list_browser_jobs',
   'watch_agent_job',
   'unwatch_agent_job',
+  // Inbox-access (workstreams/browser/contracts.md C12)
+  'list_user_inboxes',
+  'add_user_inbox',
+  'remove_user_inbox',
 ]);
 
 // Server → renderer: only the types rpc.ts actually consumes. CDP
@@ -37,6 +41,11 @@ const SERVER_ALLOWED_EVENT_TYPES: ReadonlySet<string> = new Set([
   'agent_job_updated',
   'subscribed',
   'error', // rpc.ts rejects correlated promises on error responses
+  // Inbox-access responses (correlated by `id`) + push (C12, C14)
+  'user_inboxes_list',
+  'user_inbox_added',
+  'user_inbox_removed',
+  'inbox_status_changed',
 ]);
 
 // Mutable ref to the current main window. Required because Electron's

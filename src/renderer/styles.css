@@ -431,6 +431,15 @@ button {
   flex-shrink: 0;
 }
 
+/* paused_for_user (inbox-access) variants are long enough to wrap to 2-3
+   lines, plus the optional pre-search affordance below the speech.
+   Grow the bar a touch so everything renders cleanly. The renderer
+   pushes the matched height to main via setBarHeight so BrowserView
+   bounds re-flow under the bigger chrome. */
+.action-bar--paused {
+  height: 122px;
+}
+
 .action-bar__stop {
   height: 26px;
   padding: 0 12px;
@@ -452,6 +461,214 @@ button {
   color: var(--gray-900);
 }
 
+/* Continue button - inbox-access only, paused_for_user state.
+   Filled primary purple, white text. Rendered to the RIGHT of Stop with
+   a ~16px gap (NOT a button group), so the muscle-memory fat-finger
+   swap between Stop and Continue can't happen. The color asymmetry
+   maps the visual hierarchy to the semantic one: Continue is the
+   preferred next action; Stop is the escape hatch. */
+.action-bar__continue {
+  height: 26px;
+  padding: 0 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--primary);
+  background: var(--primary);
+  color: var(--white);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  margin-left: 16px;
+  transition: background var(--dur-fast) var(--ease-out),
+              filter var(--dur-fast) var(--ease-out);
+}
+
+.action-bar__continue:hover {
+  filter: brightness(1.1);
+}
+
+.action-bar--inbox-tab {
+  /* No visual difference today; reserved for future variants (e.g.
+     a subtler tint when narrating the inbox tab's read state). */
+}
+
+/* Pre-search affordance below the JorbHeader speech bubble. Appears
+   only in `paused_for_user` state when the EmailAgent had an inbox
+   selected (every reason except no_inbox_connected). One click jumps
+   the inbox tab to the exact Gmail search the EmailAgent was using -
+   saves 30-60s of scanning vs hand-search. */
+.jorb-header__below-speech {
+  margin-top: 4px;
+}
+
+.jorb-header__presearch {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--primary);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  transition: opacity var(--dur-fast) var(--ease-out);
+  letter-spacing: 0.005em;
+}
+
+.jorb-header__presearch:hover {
+  opacity: 0.78;
+  text-decoration: underline;
+}
+
+/* ── Inbox rows (sidebar EMAILS group) ───────────────────────────── */
+
+.inbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* Composed on top of .sidebar__nav-item so chrome (28px height,
+     rounded-md, gray hover) stays consistent with Dashboard + system
+     nav. The inbox icon + a single label sit naturally; the X close
+     button reuses .session-row__close on hover. */
+}
+
+.inbox-row__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: var(--gray-500);
+  flex-shrink: 0;
+}
+
+.inbox-row__label {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inbox-row--pending {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.inbox-connect-cta {
+  /* Empty-state CTA row. Styled as a sidebar nav item with the lucide-
+     plus icon + 'Connect inbox' label. Doubles as the affordance: no
+     compact `+` on the section header in this state. */
+  color: var(--gray-600);
+}
+.inbox-connect-cta:hover {
+  color: var(--gray-900);
+}
+.inbox-connect-cta .inbox-row__icon {
+  color: var(--gray-500);
+}
+
+/* Section header with a compact action button on the right. Used by
+   the EMAILS group once at least one inbox is connected; the bare
+   `EMAILS  +` shape is forbidden in the empty state - see
+   inbox-access.md "Adding an inbox". */
+.sidebar__header--with-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 10px;
+}
+
+.sidebar__header-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 1;
+  font-weight: 400;
+  color: var(--gray-400);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out);
+}
+
+.sidebar__header-action:hover {
+  background: var(--gray-200);
+  color: var(--gray-900);
+}
+
+/* ── Inbox provider popover (anchored to "+" or CTA row) ─────────── */
+
+.inbox-popover {
+  position: fixed;
+  z-index: 200;
+  min-width: 168px;
+  padding: 6px;
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: tooltip-fade-in 120ms var(--ease-out) both;
+}
+
+.inbox-popover__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--gray-800);
+  background: transparent;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out);
+}
+
+.inbox-popover__item:hover:not(:disabled) {
+  background: var(--gray-50);
+  color: var(--gray-900);
+}
+
+.inbox-popover__item--disabled {
+  color: var(--gray-400);
+  cursor: not-allowed;
+}
+
+.inbox-popover__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gray-500);
+  flex-shrink: 0;
+}
+
+.inbox-popover__item--disabled .inbox-popover__icon {
+  color: var(--gray-300);
+}
+
+.inbox-popover__soon {
+  margin-left: auto;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--gray-400);
+}
+
 /* ══════════════════════════════════════════════════════════════════════
    JORBHEADER — mascot avatar + speech bubble
    Ported from web-app/src/components/ui/agent/JorbHeader.tsx as plain
@@ -467,7 +684,7 @@ button {
   align-items: center;
   gap: 12px;
   padding: 0 20px;
-  height: var(--bar-height);
+  height: 100%;
 }
 
 .jorb-header__avatar {
@@ -531,9 +748,12 @@ button {
   font-size: 13px;
   line-height: 1.4;
   color: var(--gray-700);
-  white-space: nowrap;
+  /* Wrap freely. The bubble's `max-width: 460px` caps line length;
+     longest paused_for_user variants render at ~3 lines, well within
+     the action-bar's height budget (122px in paused_for_user mode,
+     96px otherwise). */
+  white-space: normal;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* Re-keyed on the speech text in JorbHeader.tsx so this fires every time

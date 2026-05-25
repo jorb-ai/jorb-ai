@@ -13,14 +13,39 @@ export interface BrowserJobRow {
 }
 
 export interface BrowserEvent {
-  type: 'tool_call' | 'status' | 'error' | 'paused_for_tailor' | 'tailor_ready' | 'tailor_approved' | 'resumed';
+  type:
+    | 'tool_call'
+    | 'status'
+    | 'error'
+    | 'paused_for_tailor'
+    | 'tailor_ready'
+    | 'tailor_approved'
+    | 'resumed'
+    | 'paused_for_user';
   tool?: string;
-  message: string;
-  ts: string;
+  message?: string;
+  ts?: string;
   doc_type?: 'resume' | 'cover_letter';
   agent_job_id?: string;
   file_path?: string;
+  // Inbox-access (C13): `paused_for_user` carries a give_up reason from
+  // the EmailAgent's taxonomy + optional inbox_id / gmail_search_url
+  // that power the action-bar Continue speech variant and the one-click
+  // pre-search affordance under the JorbHeader bubble.
+  reason?: PausedForUserReason;
+  inbox_id?: string;
+  gmail_search_url?: string;
 }
+
+/** Inbox-access give_up taxonomy (C13). Tab-agnostic, six values. Renderer
+ * holds the matching speech strings; server emits only the reason code. */
+export type PausedForUserReason =
+  | 'no_inbox_connected'
+  | 'user_not_logged_in'
+  | 'no_matching_email'
+  | 'multiple_candidates_ambiguous'
+  | 'email_unreadable'
+  | 'session_expired_mid_read';
 
 export interface AgentJobEvent {
   type: 'base_selected' | 'edit' | 'reasoning' | 'memory';
@@ -30,8 +55,21 @@ export interface AgentJobEvent {
   [key: string]: any;
 }
 
+/** One row in `user_inboxes`. Fetched via `list_user_inboxes` WS request
+ * and maintained locally via `user_inbox_added` / `user_inbox_removed`
+ * correlated responses. See contracts.md C12. */
+export interface UserInbox {
+  id: string;
+  provider: 'gmail';
+  label: string | null;
+  created_at: string;
+}
+
 /** Derived display status for session rows. */
-export type SessionDisplayStatus = BrowserJobRow['status'] | 'needs_attention';
+export type SessionDisplayStatus =
+  | BrowserJobRow['status']
+  | 'needs_attention'
+  | 'paused_for_user';
 
 /**
  * Derive the display status from a browser job row.
@@ -43,16 +81,43 @@ export type SessionDisplayStatus = BrowserJobRow['status'] | 'needs_attention';
  *   tailor_approved / resumed  -> approved, agent resumed -> running
  * `tailor_ready` is the only event that means "your turn"; keying off it
  * (not the paused_for_tailor count) is what lets the shell time the signal.
+ *
+ * Inbox-access adds `paused_for_user`: the EmailAgent gave up on autopilot
+ * and the apply tool is awaiting a Continue click. Treated as a distinct
+ * state so the action bar can render the Continue button + reason variant
+ * + pre-search affordance. `resumed` (emitted when Continue resolves) flips
+ * back to running.
  */
 export function deriveDisplayStatus(job: BrowserJobRow): SessionDisplayStatus {
   if (job.status !== 'running') return job.status;
   const events = job.events || [];
   for (let i = events.length - 1; i >= 0; i--) {
     const t = events[i].type;
+    if (t === 'paused_for_user') return 'paused_for_user';
     if (t === 'tailor_ready') return 'needs_attention';
-    if (t === 'paused_for_tailor' || t === 'tailor_approved' || t === 'resumed') return 'running';
+    if (
+      t === 'paused_for_tailor' ||
+      t === 'tailor_approved' ||
+      t === 'resumed'
+    ) {
+      return 'running';
+    }
   }
   return 'running';
+}
+
+/** The most recent `paused_for_user` event payload on a job, or null
+ * if the job is not currently paused_for_user. Walks newest-first and
+ * bails on any later-than-paused tailor / resumed event (which would
+ * indicate the pause was resolved already). */
+export function latestPausedForUser(job: BrowserJobRow): BrowserEvent | null {
+  const events = job.events || [];
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i];
+    if (e.type === 'resumed' || e.type === 'tailor_approved') return null;
+    if (e.type === 'paused_for_user') return e;
+  }
+  return null;
 }
 
 declare global {
@@ -68,6 +133,7 @@ declare global {
       };
       browser: {
         stop: (jobId: string) => Promise<void>;
+        continueJob: (jobId: string) => Promise<void>;
         close: (jobId: string) => Promise<void>;
       };
       panel: {
@@ -77,6 +143,7 @@ declare global {
       session: {
         show: (sessionId: string) => Promise<boolean>;
         showTailor: (sessionId: string) => Promise<boolean>;
+        showOrNavigateInbox: (sessionId: string, url?: string) => Promise<void>;
         destroy: (sessionId: string) => Promise<void>;
         status: () => Promise<{ count: number; atCapacity: boolean }>;
         onActiveChanged: (callback: (sessionId: string) => void) => () => void;

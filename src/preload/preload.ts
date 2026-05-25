@@ -6,11 +6,13 @@ const IpcChannel = {
   AUTH_SEND_TOKEN: 'auth:send-token',
   AUTH_TOKEN_CHANGED: 'auth:token-changed',
   BROWSER_STOP: 'browser:stop',
+  BROWSER_CONTINUE: 'browser:continue',
   BROWSER_CLOSE: 'browser:close',
   PANEL_NAVIGATE: 'panel:navigate',
   PANEL_SET_BAR_HEIGHT: 'panel:set-bar-height',
   SESSION_SHOW: 'session:show',
   SESSION_SHOW_TAILOR: 'session:show-tailor',
+  SESSION_SHOW_OR_NAVIGATE_INBOX: 'session:show-or-navigate-inbox',
   SESSION_DESTROY: 'session:destroy',
   SESSION_STATUS: 'session:status',
   SESSION_ACTIVE_CHANGED: 'session:active-changed',
@@ -41,6 +43,11 @@ const finbroApi = {
     stop: async (jobId: string) => {
       return ipcRenderer.invoke(IpcChannel.BROWSER_STOP, { jobId });
     },
+    // Inbox-access: user clicked Continue in the action bar's
+    // paused_for_user state. Fires user_continued over the WS.
+    continueJob: async (jobId: string) => {
+      return ipcRenderer.invoke(IpcChannel.BROWSER_CONTINUE, { jobId });
+    },
     close: async (jobId: string) => {
       return ipcRenderer.invoke(IpcChannel.BROWSER_CLOSE, { jobId });
     },
@@ -48,13 +55,14 @@ const finbroApi = {
 
   panel: {
     // sessionId defaults to '__webapp__' on the main side when omitted.
-    // Pass an explicit id (e.g. '__gmail__', '__outlook__') to host a
-    // different origin in its own persistent BrowserView.
+    // Pass an explicit id, for example an `__inbox_<id>__` session, to host
+    // a different origin in its own persistent BrowserView.
     navigate: async (url: string, sessionId?: string) => {
       return ipcRenderer.invoke(IpcChannel.PANEL_NAVIGATE, { url, sessionId });
     },
-    // Renderer notifies main of the current action-bar height (44 or 96)
-    // so BrowserView bounds stay aligned with the HTML chrome.
+    // Renderer notifies main of the current action-bar height (0, 96, or 122
+    // — 122 is the paused_for_user variant) so BrowserView bounds stay
+    // aligned with the HTML chrome.
     setBarHeight: async (height: number) => {
       return ipcRenderer.invoke(IpcChannel.PANEL_SET_BAR_HEIGHT, { height });
     },
@@ -66,6 +74,13 @@ const finbroApi = {
     },
     showTailor: async (sessionId: string) => {
       return ipcRenderer.invoke(IpcChannel.SESSION_SHOW_TAILOR, { sessionId });
+    },
+    // Inbox-access: open / re-search a per-inbox BrowserView. Omitting
+    // `url` defaults to the Gmail root. Used by the sidebar InboxRow
+    // (no url) and the JorbHeader pre-search affordance (url = the
+    // EmailAgent's exact search URL, lands the user pre-searched).
+    showOrNavigateInbox: async (sessionId: string, url?: string) => {
+      return ipcRenderer.invoke(IpcChannel.SESSION_SHOW_OR_NAVIGATE_INBOX, { sessionId, url });
     },
     destroy: async (sessionId: string) => {
       return ipcRenderer.invoke(IpcChannel.SESSION_DESTROY, { sessionId });

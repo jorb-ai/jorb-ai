@@ -345,6 +345,21 @@ export function sendStopAutomation(jobId: string): void {
   }
 }
 
+/**
+ * Inbox-access: user clicked Continue in the action bar after a
+ * `paused_for_user` event. The server resolves the matching
+ * PENDING_OTP_REQUESTS entry with `{kind: 'user_continued'}`; the apply
+ * agent re-reads viewA's DOM and proceeds. See contracts.md C13.
+ */
+export function sendUserContinued(jobId: string): void {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'user_continued', job_id: jobId }));
+    log.info('[WebSocket] Sent user_continued for job:', jobId);
+  } else {
+    log.warn(`[WebSocket] sendUserContinued — WS not open, dropping (job: ${jobId})`);
+  }
+}
+
 export function disconnectWebSocket(): void {
   const state = ws ? ws.readyState : 'null';
   log.warn(`[WebSocket] disconnectWebSocket called — ws state: ${state}, stored: ${tokenPrefix(currentToken)}`);

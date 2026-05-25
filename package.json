@@ -1,7 +1,7 @@
 {
   "name": "jorb-ai-desktop",
   "version": "0.1.0",
-  "description": "Jorb AI desktop app — automated job applications via CDP",
+  "description": "Jorb AI desktop app – automated job applications via CDP",
   "main": "dist/main/main.js",
   "author": "Jorb AI",
   "license": "MIT",
