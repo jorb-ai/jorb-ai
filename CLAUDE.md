@@ -81,7 +81,7 @@ User-initiated paths (initial `__webapp__` load on app start, sidebar system-tab
 Mirrors the `web-app` webapp's look and feel so the desktop shell and the webapp that runs inside its BrowserViews feel like one product.
 
 - **Typography:** system font stack (`-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif`), same as `web-app/tailwind.config.ts`. No web fonts. No Google Fonts CDN.
-- **Color:** single-accent system. `primary` = `#290E99` (`finbro-purple` in the webapp) reserved for "act now" signals: the agent-live dot, the gleaming sweep on running session rows, and the JorbHeader speech bubble. NOT used for plain active-row state. Neutrals are a Tailwind-aligned gray scale (`gray-50`...`gray-900`) matching `web-app`'s actual usage. Semantic `success` / `warning` / `danger` carry the session-row status signals: a green pulse (completed), an amber pulse (needs-attention), a static red tint (failed), plus small marks and icons.
+- **Color:** single-accent system. `primary` = `#290E99` (`finbro-purple` in the webapp) reserved for "act now" signals: the agent-live dot, the gleaming sweep on running session rows, and the JorbHeader speech bubble. NOT used for plain active-row state. Neutrals are a Tailwind-aligned gray scale (`gray-50`...`gray-900`) matching `web-app`'s actual usage. Semantic `success` / `warning` / `danger` carry the session-row status signals: a green glow (completed), an amber glow (needs-attention), a static red tint (failed), plus small marks and icons.
 - **Chrome:** solid white window canvas. The sidebar is a frosted-glass card (`rgba(255,255,255,0.72)` over `backdrop-filter: blur(24px) saturate(180%)`) with an inset white-highlight plus an elevated drop shadow plus a soft 1px border so it reads as a floating object on white rather than a contrasting zone. Tight gutter (6px L/T/B plus 4px R), with almost no gray space. Middle panel is full-bleed white. Interactive rows use `rounded-md` (6px) and 28px height for compact density.
 - **Active state:** subtle pill, with `gray-100` fill plus 1px `gray-200` inset ring plus `font-medium` plus `gray-900` text. Hover is `gray-50` fill. The two states share a fill family so hover feels like a precursor to active, not a competing treatment.
 - **Running state:** gleaming sweep, a translucent primary gradient swept L-to-R over the row at ~2.4s ease-in-out infinite. Layers on top of the active pill if the row is also active. Runs through the tailoring sub-flow too. Stops only on a terminal status.
@@ -139,6 +139,11 @@ src/
 │   │                            navigate / set-bar-height, browser:stop,
 │   │                            session show / show-tailor / destroy /
 │   │                            status, session:active-changed channel.
+│   ├── chrome-import/           Dev cookie-import (profiles / cookies /
+│   │                            allowlist): in-process v10 decrypt (dev) or
+│   │                            spawn-Chrome+CDP (prod), allowlist-filter,
+│   │                            inject into persist:portal. See
+│   │                            workstreams/browser/shell/cookie-import.md.
 │   └── rpc-bridge.ts            Renderer rpc.ts <-> WS bridge with
 │                                inbound (3 types) and outbound
 │                                (6 push events plus error) allowlists.
@@ -228,9 +233,9 @@ Supabase Realtime is NOT used by this renderer. All data (list plus live updates
 
 1. No business logic in this shell. It's a dumb terminal.
 2. WebSocket is the single data channel. No parallel Supabase client, no Supabase Realtime, no other external network surface.
-3. Do not inject DOM into any BrowserView. CDP isolation for viewA must be preserved.
+3. Do not inject DOM into any BrowserView, with ONE sanctioned exception: the agent's transient purple "lock-on" highlight, drawn on the element about to be actuated so the user can watch the fill happen (`web-api/.../browseragent/tools.py` `_highlight_node`, via CDP `Runtime.callFunctionOn`). It must stay `pointer-events:none`, self-remove (~1.2s), use a single fixed id, and never mutate form fields. No other DOM injection; CDP isolation for viewA is otherwise preserved.
 4. Do not import `@supabase/supabase-js` in the renderer. Enforced by `package.json` (no dep) and by CSP `connect-src 'self'`.
-5. BrowserView partition is `persist:portal` for portal (viewA) and webapp (viewB / `__webapp__`) views, isolating cookies from the main renderer. Inbox views (`__inbox_<id>__`, one per row in `user_inboxes`) use per-inbox partitions `persist:inbox_<id>` so connected accounts are isolated from `persist:portal` and from each other. See `workstreams/browser/inbox-access.md`.
+5. BrowserView partition is `persist:portal` for portal (viewA) and webapp (viewB / `__webapp__`) views, isolating cookies from the main renderer. Inbox views (`__inbox_<id>__`, one per row in `user_inboxes`) use per-inbox partitions `persist:inbox_<id>` so connected accounts are isolated from `persist:portal` and from each other. See `workstreams/browser/shell/inbox-access.md`.
 6. `MAX_BROWSER_JOB_SESSIONS = 15` must equal `MAX_CONCURRENT_BROWSER_JOBS` in `web-api/finbroapi/src/browser_worker/main.py` (see `workstreams/browser/contracts.md` C9). Cap-raise rationale and the vertical-scaling tiers live in `workstreams/browser/architecture.md` "Scaling Posture".
 7. Do not reintroduce a right panel. Phase 5 was a deliberate removal. Intervention signals live in the action-bar transform, and the Approve affordance lives inside the tailor page per QA R26.
 8. Do not name colors after products ("brand", "finbroPurple"). Generic tokens only (`primary`, `neutral*`, `success` / `warning` / `danger`).

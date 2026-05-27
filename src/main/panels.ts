@@ -372,7 +372,7 @@ export async function showOrNavigateSession(sessionId: string, url: string): Pro
  * row click": show an existing inbox tab without reload, or create it at
  * Gmail root if it does not exist yet. An explicit url means "pre-search
  * affordance": force-load the Gmail search URL even when the session already
- * exists. See workstreams/browser/inbox-access.md "Pre-search affordance".
+ * exists. See workstreams/browser/shell/inbox-access.md "Pre-search affordance".
  */
 export async function showOrNavigateInbox(sessionId: string, url?: string): Promise<void> {
   if (!isInboxSessionId(sessionId)) {
@@ -427,12 +427,14 @@ export function showTailorView(sessionId: string, url: string): boolean {
     log.error(`[Panels] showTailorView(${sessionId.slice(0, 8)}) — loadURL failed: ${err}`);
   });
 
-  // If this is the active session, reorder so viewB is on top
-  if (activeSessionId === sessionId) {
-    reorderViews();
-  } else {
-    log.debug(`[Panels] showTailorView(${sessionId.slice(0, 8)}) — not active (active=${activeSessionId?.slice(0, 8) ?? 'none'}), viewB created in background`);
-  }
+  // The tailor step is an approval/intervention moment, so surface it: the user
+  // should see JorbHeader + the cover-letter stream, not have viewB sit in the
+  // background until they click the amber sidebar row. showSession activates the
+  // session and reorders viewB on top (and fires session:active-changed so the
+  // sidebar pill follows). Multi-session trade-off: this foregrounds a backgrounded
+  // job when it needs approval; refine here if it ever competes with a session the
+  // user is actively watching.
+  showSession(sessionId);
 
   return true;
 }
