@@ -154,6 +154,10 @@ declare global {
         unsubscribe: () => Promise<void>;
         onEvent: (callback: (event: unknown) => void) => () => void;
       };
+      // Dev-only: graft real Chrome cookies into persist:portal (makeshift).
+      dev: {
+        importCookies: () => Promise<{ ok: boolean; error?: string; browserName?: string; profile?: string; imported?: number; total?: number; domains?: number }>;
+      };
     };
     finbro?: {
       sendAuthToken: (token: string | null) => void;

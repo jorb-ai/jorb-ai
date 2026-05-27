@@ -20,6 +20,7 @@ const IpcChannel = {
   RPC_SUBSCRIBE: 'rpc:subscribe',
   RPC_UNSUBSCRIBE: 'rpc:unsubscribe',
   RPC_EVENT: 'rpc:event',
+  DEV_IMPORT_COOKIES: 'dev:import-cookies',
 } as const;
 
 const finbroApi = {
@@ -107,6 +108,13 @@ const finbroApi = {
       ipcRenderer.on(IpcChannel.RPC_EVENT, handler);
       return () => { ipcRenderer.removeListener(IpcChannel.RPC_EVENT, handler); };
     },
+  },
+
+  // Dev-only: graft the user's real Chrome cookies into persist:portal.
+  // Makeshift trigger for the chrome-import engine; gated to dev in the UI.
+  dev: {
+    importCookies: async (): Promise<{ ok: boolean; error?: string; browserName?: string; profile?: string; imported?: number; total?: number; domains?: number }> =>
+      ipcRenderer.invoke(IpcChannel.DEV_IMPORT_COOKIES),
   },
 };
 

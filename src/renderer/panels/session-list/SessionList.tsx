@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { SessionRow } from '../../components/SessionRow';
 import type { BrowserJobRow } from '../../types';
 import logoWordmark from '../../assets/logos/logo_wordmark.png';
@@ -36,6 +36,25 @@ export const SessionList: React.FC<SessionListProps> = ({
   activeNavId,
   emailsEnabled,
 }) => {
+  // Dev-only cookie import. Makeshift trigger for the chrome-import engine —
+  // grafts the user's signed-in Chrome cookies into persist:portal so a
+  // freshly-cleared dev session lands logged-in. Hidden in production builds.
+  const [importState, setImportState] = useState<'idle' | 'running'>('idle');
+  const [importMsg, setImportMsg] = useState<string | null>(null);
+
+  const handleImportCookies = async () => {
+    setImportState('running');
+    setImportMsg(null);
+    try {
+      const r = await window.Finbro.dev.importCookies();
+      setImportMsg(r.ok ? `✓ ${r.imported} cookies · ${r.domains} domains` : `✗ ${r.error ?? 'failed'}`);
+    } catch (e) {
+      setImportMsg(`✗ ${(e as Error).message}`);
+    } finally {
+      setImportState('idle');
+    }
+  };
+
   const renderNavItem = (item: NavItem) => (
     <div
       key={item.key}
@@ -91,6 +110,21 @@ export const SessionList: React.FC<SessionListProps> = ({
           </div>
         </div>
       </div>
+
+      {import.meta.env.DEV && (
+        <div className="sidebar__dev">
+          <button
+            type="button"
+            className="sidebar__dev-btn"
+            disabled={importState === 'running'}
+            onClick={handleImportCookies}
+            title="Dev only: graft your signed-in Chrome cookies into persist:portal so this session is logged in on job portals. Clear with scripts/clear-cookies.sh."
+          >
+            {importState === 'running' ? 'Importing cookies…' : 'Import cookies'}
+          </button>
+          {importMsg && <div className="sidebar__dev-msg">{importMsg}</div>}
+        </div>
+      )}
     </div>
   );
 };
