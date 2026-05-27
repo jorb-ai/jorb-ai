@@ -19,7 +19,7 @@ export enum IpcChannel {
   // call even when the session already exists at the same origin
   // (Gmail-search URL fragment changes between calls; the generic
   // showOrNavigateSession's origin-match short-circuit would swallow
-  // the pre-search affordance). See workstreams/browser/inbox-access.md.
+  // the pre-search affordance). See workstreams/browser/shell/inbox-access.md.
   SESSION_SHOW_OR_NAVIGATE_INBOX = 'session:show-or-navigate-inbox',
   // One-way main → renderer push: fired whenever panels.ts:showSession
   // brings a session to the front. Lets the renderer mirror activeJobId
@@ -51,6 +51,14 @@ export enum IpcChannel {
   RPC_SUBSCRIBE = 'rpc:subscribe',
   RPC_UNSUBSCRIBE = 'rpc:unsubscribe',
   RPC_EVENT = 'rpc:event',
+
+  // Dev-only tooling. Grafts the user's real Chrome cookies into persist:portal
+  // so a freshly-cleared dev session lands logged-in on job portals (+ Google
+  // SSO). Makeshift trigger for the production-bound chrome-import/ engine;
+  // removed when the production onboarding/consent flow ships. Clearing cookies
+  // is a script (scripts/clear-cookies.sh), not in-app — no production analog.
+  // See workstreams/browser/shell/cookie-import.md.
+  DEV_IMPORT_COOKIES = 'dev:import-cookies',
 }
 
 // Configuration

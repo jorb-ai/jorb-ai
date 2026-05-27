@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" fill="none">
+  <!-- Envelope (behind) -->
+  <path fill="#1f6fc4" d="M20 13.5h21.5A1.5 1.5 0 0 1 43 15v18a1.5 1.5 0 0 1-1.5 1.5H20v-21Z"/>
+  <rect x="27" y="18.5" width="13" height="11" fill="#fff"/>
+  <path fill="#1f6fc4" d="M27 18.5h13l-6.5 4.6Z"/>
+  <!-- Outlook "O" panel (front, overlapping the envelope's left edge) -->
+  <rect x="4" y="9" width="22" height="30" rx="3" fill="#0f4c98"/>
+  <path fill="#fff" fill-rule="evenodd" d="M15 16.4a7.1 7.1 0 1 1 0 14.2 7.1 7.1 0 0 1 0-14.2Zm0 4.2a2.9 2.9 0 1 0 0 5.8 2.9 2.9 0 0 0 0-5.8Z"/>
+</svg>

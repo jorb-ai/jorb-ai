@@ -264,6 +264,50 @@ button {
   line-height: 1.5;
 }
 
+/* Dev-only cookie-import affordance — pinned below the scroll region, inside
+   the sidebar card. Dashed/quiet so it never reads as a product feature.
+   Makeshift: removed when the production onboarding flow ships. */
+.sidebar__dev {
+  flex-shrink: 0;
+  padding: 8px 10px 4px;
+  border-top: 1px solid rgba(229, 231, 235, 0.6);
+}
+
+.sidebar__dev-btn {
+  width: 100%;
+  height: 28px;
+  border: 1px dashed var(--gray-300);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--gray-600);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out);
+}
+
+.sidebar__dev-btn:hover:not(:disabled) {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.sidebar__dev-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.sidebar__dev-msg {
+  margin-top: 5px;
+  padding: 0 2px;
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: var(--gray-500);
+  word-break: break-word;
+}
+
 /* ── Session row — same chrome as nav-item ─────────────────────────── */
 
 .session-row {
@@ -285,9 +329,12 @@ button {
 
 /* Status tints. `failed` is a quiet static fill on the row background, so
    it yields to :hover / --active like any neutral row. `completed` and
-   `needs-attention` instead pulse: a slow opacity breathe on a ::before
-   overlay, so the hover / active fills underneath stay intact, exactly
-   like the running gleam. Sweep = the agent is working; pulse = your move. */
+   `needs-attention` instead GLOW: a luminous bloom on a ::before overlay
+   that breathes opacity, so the hover / active fills underneath stay intact.
+   Not a flat tint - a soft horizontal gradient core + an inset colour bloom
+   read as light pooling in the row, the same family of effect as the
+   JorbHeader's purple halo, tuned per status. Sweep (running) = the agent is
+   working; glow (completed / needs-attention) = your move. */
 .session-row--failed { background: rgba(239, 68, 68, 0.14); }
 
 .session-row--completed::before,
@@ -295,15 +342,28 @@ button {
   content: '';
   position: absolute;
   inset: 0;
+  border-radius: inherit;
   pointer-events: none;
+  animation: glow-breathe 3s var(--ease-in-out) infinite;
 }
 .session-row--completed::before {
-  background: rgba(16, 185, 129, 0.22);
-  animation: tint-pulse 3.4s var(--ease-in-out) infinite;
+  background: linear-gradient(
+    90deg,
+    rgba(16, 185, 129, 0.05) 0%,
+    rgba(16, 185, 129, 0.26) 50%,
+    rgba(16, 185, 129, 0.05) 100%
+  );
+  box-shadow: inset 0 0 11px rgba(16, 185, 129, 0.34);
 }
 .session-row--needs-attention::before {
-  background: rgba(245, 158, 11, 0.30);
-  animation: tint-pulse 2.4s var(--ease-in-out) infinite;
+  background: linear-gradient(
+    90deg,
+    rgba(245, 158, 11, 0.06) 0%,
+    rgba(245, 158, 11, 0.32) 50%,
+    rgba(245, 158, 11, 0.06) 100%
+  );
+  box-shadow: inset 0 0 11px rgba(245, 158, 11, 0.42);
+  animation-duration: 2.4s;
 }
 
 .session-row:hover {
@@ -609,63 +669,95 @@ button {
 .inbox-popover {
   position: fixed;
   z-index: 200;
-  min-width: 168px;
-  padding: 6px;
+  padding: 8px;
   background: var(--white);
   border: 1px solid var(--gray-200);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex-direction: row;
+  gap: 6px;
   animation: tooltip-fade-in 120ms var(--ease-out) both;
 }
 
-.inbox-popover__item {
+/* Provider tile – brand logo only at rest; the provider name fades in
+   below the logo on hover (and keyboard focus), with the logo lifting to
+   make room. Logos live in renderer/assets/icons/{gmail,outlook}.svg
+   (vector, so crisp at any DPI). Outlook is dimmed + "soon" until it
+   ships under the same primitive; it still reveals its name on hover so
+   the user knows what it is. */
+.inbox-tile {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-radius: var(--radius-sm);
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--gray-800);
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  border-radius: var(--radius-md);
   background: transparent;
-  border: 0;
-  text-align: left;
+  border: 1px solid transparent;
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease-out),
-              color var(--dur-fast) var(--ease-out);
+              border-color var(--dur-fast) var(--ease-out);
 }
 
-.inbox-popover__item:hover:not(:disabled) {
+.inbox-tile__logo {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  pointer-events: none;
+  transition: transform var(--dur-base) var(--ease-out),
+              filter var(--dur-base) var(--ease-out);
+}
+
+.inbox-tile__label {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 7px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--gray-600);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(3px);
+  transition: opacity var(--dur-fast) var(--ease-out),
+              transform var(--dur-fast) var(--ease-out);
+}
+
+/* Interactive (non-disabled) tiles get the surface highlight; both
+   states lift the logo + reveal the label so even Outlook says its name. */
+.inbox-tile:not(.inbox-tile--disabled):hover,
+.inbox-tile:focus-visible {
   background: var(--gray-50);
-  color: var(--gray-900);
+  border-color: var(--gray-200);
+  outline: none;
 }
 
-.inbox-popover__item--disabled {
-  color: var(--gray-400);
+.inbox-tile:hover .inbox-tile__logo,
+.inbox-tile:focus-visible .inbox-tile__logo {
+  transform: translateY(-7px) scale(1.06);
+}
+
+.inbox-tile:hover .inbox-tile__label,
+.inbox-tile:focus-visible .inbox-tile__label {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.inbox-tile--disabled {
   cursor: not-allowed;
 }
 
-.inbox-popover__icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--gray-500);
-  flex-shrink: 0;
+.inbox-tile--disabled .inbox-tile__logo {
+  filter: grayscale(1);
+  opacity: 0.4;
 }
 
-.inbox-popover__item--disabled .inbox-popover__icon {
-  color: var(--gray-300);
-}
-
-.inbox-popover__soon {
-  margin-left: auto;
-  font-size: 10.5px;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+.inbox-tile--disabled .inbox-tile__label {
   color: var(--gray-400);
 }
 
@@ -785,8 +877,8 @@ button {
   100% { background-position: -200% 0; }
 }
 
-@keyframes tint-pulse {
-  0%, 100% { opacity: 0.55; }
+@keyframes glow-breathe {
+  0%, 100% { opacity: 0.4; }
   50%      { opacity: 1; }
 }
 

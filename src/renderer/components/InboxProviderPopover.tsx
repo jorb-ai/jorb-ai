@@ -1,9 +1,10 @@
 /**
  * InboxProviderPopover - small popover anchored to whichever element
  * triggered "add inbox" (the empty-state CTA row, or the section-header
- * `+`). Renders Gmail (clickable) and Outlook (disabled, "soon"). MVP
- * supports Gmail only; Outlook ships under the same primitive with no
- * new architecture.
+ * `+`). Renders the provider brand logos as tiles - Gmail (clickable),
+ * Outlook (disabled, dimmed + "soon"). Logos only at rest; the provider
+ * name fades in beneath the logo on hover. MVP supports Gmail only;
+ * Outlook ships under the same primitive with no new architecture.
  *
  * Lives in the sidebar zone (renderer chrome, no BrowserView covers it),
  * so no detach-views dance or transient secondary BrowserWindow needed.
@@ -11,6 +12,8 @@
  */
 import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import gmailLogo from '../assets/icons/gmail.svg';
+import outlookLogo from '../assets/icons/outlook.svg';
 
 interface InboxProviderPopoverProps {
   anchorRect: DOMRect;
@@ -61,31 +64,26 @@ export const InboxProviderPopover: React.FC<InboxProviderPopoverProps> = ({
       role="menu"
     >
       <button
-        className="inbox-popover__item"
+        type="button"
+        className="inbox-tile"
         onClick={() => onPick('gmail')}
         role="menuitem"
+        aria-label="Connect Gmail"
+        title="Gmail"
       >
-        <span className="inbox-popover__icon" aria-hidden>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="5" width="18" height="14" rx="2" />
-            <path d="M3 7l9 6 9-6" />
-          </svg>
-        </span>
-        Gmail
+        <img src={gmailLogo} alt="" className="inbox-tile__logo" draggable={false} />
+        <span className="inbox-tile__label">Gmail</span>
       </button>
       <button
-        className="inbox-popover__item inbox-popover__item--disabled"
-        disabled
+        type="button"
+        className="inbox-tile inbox-tile--disabled"
+        aria-disabled="true"
         role="menuitem"
+        aria-label="Outlook (coming soon)"
+        title="Outlook - coming soon"
       >
-        <span className="inbox-popover__icon" aria-hidden>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="5" width="18" height="14" rx="2" />
-            <path d="M3 7l9 6 9-6" />
-          </svg>
-        </span>
-        Outlook
-        <span className="inbox-popover__soon">soon</span>
+        <img src={outlookLogo} alt="" className="inbox-tile__logo" draggable={false} />
+        <span className="inbox-tile__label">Outlook · soon</span>
       </button>
     </div>,
     document.body,
