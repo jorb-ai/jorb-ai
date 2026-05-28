@@ -13,6 +13,7 @@ import { IpcChannel } from '../types/ipc.types';
 // cap so adding a new sidebar item can never shrink the job budget.
 const MAX_BROWSER_JOB_SESSIONS = 15;
 const NAVIGATE_TIMEOUT_MS = 30_000;
+const WEBAPP_SESSION_ID = '__webapp__';
 const PORTAL_PARTITION = 'persist:portal';
 const INBOX_SESSION_PREFIX = '__inbox_';
 const INBOX_SESSION_SUFFIX = '__';
@@ -41,6 +42,10 @@ function inboxShortIdFromSession(id: string): string {
 function partitionForSession(id: string): string {
   if (isInboxSessionId(id)) return INBOX_PARTITION_PREFIX + inboxShortIdFromSession(id);
   return PORTAL_PARTITION;
+}
+
+function preloadForSession(id: string): string {
+  return id === WEBAPP_SESSION_ID ? 'preload-webapp' : 'preload-webview';
 }
 
 // Memoised Session references per partition. Electron's
@@ -99,12 +104,10 @@ function makeView(preloadName: string, partition: string = PORTAL_PARTITION): Br
   // Prevent CDP throttling on hidden views
   view.webContents.setBackgroundThrottling(false);
 
-  // Auth is push-only (Phase 4 R20 update): the webapp calls
+  // Auth is push-only: web-app BrowserViews use preload-webapp.ts to expose
   // window.finbro.sendAuthToken on SIGNED_IN / TOKEN_REFRESHED /
-  // visibilitychange-driven refreshes, exposed by preload-webview.ts.
-  // No proactive localStorage read — that was reading 23-hour-stale
-  // tokens on every BrowserView load and causing "Invalid token" WS
-  // registration failures on every startup.
+  // visibilitychange-driven refreshes. Portal and inbox views use the neutral
+  // preload-webview.ts and cannot push tokens.
 
   view.webContents.on('did-navigate', (_event, url) => {
     log.debug(`[Panels] did-navigate — ${url}`);
@@ -197,7 +200,7 @@ export function createSession(sessionId: string): boolean {
   }
 
   const partition = partitionForSession(sessionId);
-  const viewA = makeView('preload-webview', partition);
+  const viewA = makeView(preloadForSession(sessionId), partition);
   parentWindow.addBrowserView(viewA);
   applyBounds(viewA);
 
@@ -282,10 +285,10 @@ export function showSession(sessionId: string): boolean {
 export async function navigateSession(
   sessionId: string,
   url: string,
-  options: { autoShow?: boolean } = {},
+  options: { autoShow?: boolean; preserveIfSameOrigin?: boolean } = {},
 ): Promise<number> {
-  const { autoShow = true } = options;
-  log.info(`[Panels] navigateSession(${sessionId.slice(0, 8)}) — url: ${url}, autoShow: ${autoShow}`);
+  const { autoShow = true, preserveIfSameOrigin = false } = options;
+  log.info(`[Panels] navigateSession(${sessionId.slice(0, 8)}) — url: ${url}, autoShow: ${autoShow}, preserveIfSameOrigin: ${preserveIfSameOrigin}`);
   let session = sessions.get(sessionId);
 
   // Tab-switch semantics: if this session already hosts the target origin,
@@ -294,7 +297,7 @@ export async function navigateSession(
   // in turn fires a cascade of AUTH_SEND_TOKEN pushes and (for viewB) would
   // tear down the TailorPage mid-interaction. Only callers legitimately
   // wanting a reload should do so by destroying the session first.
-  if (session && session.tabId !== null) {
+  if (preserveIfSameOrigin && session && session.tabId !== null) {
     try {
       const currentUrl = session.viewA.webContents.getURL();
       if (currentUrl && new URL(currentUrl).origin === new URL(url).origin) {
@@ -417,7 +420,7 @@ export function showTailorView(sessionId: string, url: string): boolean {
     // exactly as before.
     const partition = partitionForSession(sessionId);
     log.info(`[Panels] showTailorView(${sessionId.slice(0, 12)}) — creating viewB | partition=${partition}`);
-    session.viewB = makeView('preload-webview', partition);
+    session.viewB = makeView('preload-webapp', partition);
     parentWindow.addBrowserView(session.viewB);
   } else {
     log.debug(`[Panels] showTailorView(${sessionId.slice(0, 8)}) — viewB exists, reusing`);

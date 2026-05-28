@@ -121,15 +121,19 @@ export function latestPausedForUser(job: BrowserJobRow): BrowserEvent | null {
 }
 
 declare global {
+  interface AuthState {
+    isAuthenticated: boolean;
+    userId: string | null;
+  }
+
   interface Window {
     Finbro: {
       config: {
-        get: () => Promise<{ config: any }>;
-        set: (config: any) => Promise<void>;
+        get: () => Promise<{ config: { debugMode: boolean; automationServerUrl: string; webAppUrl: string } }>;
+        set: (config: Partial<{ debugMode: boolean; automationServerUrl: string; webAppUrl: string }>) => Promise<void>;
       };
       auth: {
-        sendAuthToken: (token: string | null) => Promise<void>;
-        onTokenChanged: (callback: (token: string | null) => void) => () => void;
+        onTokenChanged: (callback: (state: AuthState) => void) => () => void;
       };
       browser: {
         stop: (jobId: string) => Promise<void>;
@@ -158,9 +162,6 @@ declare global {
       dev: {
         importCookies: () => Promise<{ ok: boolean; error?: string; browserName?: string; profile?: string; imported?: number; total?: number; domains?: number }>;
       };
-    };
-    finbro?: {
-      sendAuthToken: (token: string | null) => void;
     };
     __FINBRO_ENV__?: { isElectron: boolean };
   }

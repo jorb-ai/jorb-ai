@@ -1,10 +1,20 @@
 import Store from 'electron-store';
-import log from './logger';
-import { AppConfig, DEFAULT_CONFIG } from '../types/config.types';
+import { app } from 'electron';
+import log from 'electron-log/main';
+import { AppConfig, DEV_DEFAULT_CONFIG, PROD_DEFAULT_CONFIG } from '../types/config.types';
+
+function runtimeDefaults(): AppConfig {
+  const base = app.isPackaged ? PROD_DEFAULT_CONFIG : DEV_DEFAULT_CONFIG;
+  return {
+    ...base,
+    automationServerUrl: process.env.JORB_AUTOMATION_SERVER_URL || base.automationServerUrl,
+    webAppUrl: process.env.JORB_WEBAPP_URL || base.webAppUrl,
+  };
+}
 
 // Initialize electron-store with schema validation
 const store = new Store<AppConfig>({
-  defaults: DEFAULT_CONFIG,
+  defaults: runtimeDefaults(),
   name: 'jorb-config'
 });
 
@@ -14,7 +24,7 @@ const store = new Store<AppConfig>({
  */
 export function getConfig(): AppConfig {
   const stored = store.store;
-  return { ...DEFAULT_CONFIG, ...stored };
+  return { ...runtimeDefaults(), ...stored };
 }
 
 /**
@@ -35,8 +45,7 @@ export function setConfig(updates: Partial<AppConfig>): void {
  * @returns Value or undefined
  */
 export function getConfigValue<K extends keyof AppConfig>(key: K): AppConfig[K] {
-  const value = store.get(key);
-  return value !== undefined ? value : DEFAULT_CONFIG[key];
+  return getConfig()[key];
 }
 
 /**

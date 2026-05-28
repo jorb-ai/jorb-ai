@@ -13,6 +13,7 @@ interface SessionListProps {
   onClose: (jobId: string) => void;
   activeNavId?: string | null;
   emailsEnabled: boolean;
+  webAppUrl: string;
 }
 
 interface NavItem {
@@ -21,10 +22,6 @@ interface NavItem {
   url: string;
   sessionId: string;
 }
-
-const NAV_DASHBOARD: NavItem[] = [
-  { key: 'webapp',  label: 'Jorb AI Web',  url: 'http://localhost:3000',   sessionId: '__webapp__' },
-];
 
 export const SessionList: React.FC<SessionListProps> = ({
   sessions,
@@ -35,6 +32,7 @@ export const SessionList: React.FC<SessionListProps> = ({
   onClose,
   activeNavId,
   emailsEnabled,
+  webAppUrl,
 }) => {
   // Dev-only cookie import. Makeshift trigger for the chrome-import engine —
   // grafts the user's signed-in Chrome cookies into persist:portal so a
@@ -70,7 +68,7 @@ export const SessionList: React.FC<SessionListProps> = ({
       {/* Brand mark — wordmark logo, matches web-app Logo.tsx */}
       <div
         className="sidebar__brand"
-        onClick={() => onNavigate('http://localhost:3000', '__webapp__')}
+        onClick={() => onNavigate(webAppUrl, '__webapp__')}
       >
         <img src={logoWordmark} alt="Jorb AI" className="sidebar__logo" />
       </div>
@@ -79,7 +77,7 @@ export const SessionList: React.FC<SessionListProps> = ({
         {/* Dashboard */}
         <div className="sidebar__section">
           <div className="sidebar__header">Dashboard</div>
-          {NAV_DASHBOARD.map(renderNavItem)}
+          {renderNavItem({ key: 'webapp', label: 'Jorb AI Web', url: webAppUrl, sessionId: '__webapp__' })}
         </div>
 
         {/* Emails — user-added inboxes (inbox-access workstream). */}

@@ -1,7 +1,7 @@
 import { ipcMain, IpcMainInvokeEvent } from 'electron';
-import log, { tokenPrefix } from './logger';
+import log from './logger';
 import { IpcChannel } from '../types/ipc.types';
-import { getConfig, setConfig } from './config';
+import { getConfig, getConfigValue, setConfig } from './config';
 import { handleAuthToken } from './auth';
 import { sendStopAutomation, sendUserContinued } from './websocket-client';
 import { closeBrowserJob } from './http-client';
@@ -17,6 +17,41 @@ import {
 import { setActionBarHeight } from './windows';
 import { detectChromeProfiles } from './chrome-import/profiles';
 import { importChromeProfileCookies } from './chrome-import/cookies';
+
+const AUTH_TOKEN_ALLOWED_ORIGINS = new Set([
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'https://jorb.ai',
+  'https://www.jorb.ai',
+  'https://dev.jorb.ai',
+]);
+
+function configuredWebAppOrigin(): string | null {
+  try {
+    const origin = new URL(getConfigValue('webAppUrl')).origin;
+    if (
+      origin === 'https://jorb.ai' ||
+      origin === 'https://www.jorb.ai' ||
+      origin === 'https://dev.jorb.ai' ||
+      origin.startsWith('http://localhost:') ||
+      origin.startsWith('http://127.0.0.1:')
+    ) {
+      return origin;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function isAllowedAuthSender(rawUrl: string): boolean {
+  try {
+    const url = new URL(rawUrl);
+    return AUTH_TOKEN_ALLOWED_ORIGINS.has(url.origin) || url.origin === configuredWebAppOrigin();
+  } catch {
+    return false;
+  }
+}
 
 export function registerIpcHandlers(): void {
   log.info('[IPC] Registering handlers...');
@@ -46,7 +81,11 @@ export function registerIpcHandlers(): void {
     const sender = event.sender;
     const senderUrl = sender.getURL() || '<empty>';
     const senderType = sender.getType();
-    log.info(`[IPC] AUTH_SEND_TOKEN — sender: ${senderType} @ ${senderUrl}, token: ${tokenPrefix(args.token)}`);
+    if (!isAllowedAuthSender(senderUrl)) {
+      log.warn(`[IPC] AUTH_SEND_TOKEN rejected: sender=${senderType} @ ${senderUrl}`);
+      return;
+    }
+    log.info(`[IPC] AUTH_SEND_TOKEN accepted: sender=${senderType} @ ${senderUrl}`);
     handleAuthToken(args.token);
   });
 

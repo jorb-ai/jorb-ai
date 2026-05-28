@@ -10,8 +10,8 @@ let mainWindow: BrowserWindow | null = null;
 // Sidebar zone is 190px: a 180px floating glass card with a tight gutter
 // (6px L/T/B + 4px R). The middle panel butts against the card's right
 // edge with just enough breathing room for the card's drop shadow.
-// Action bar is binary: 0 when no agent session is active (idle /
-// system tab), or 96 for any agent-session state (the JorbHeader).
+// Action bar is 0 hidden, 96 for the JorbHeader, or 122 for
+// paused_for_user.
 // Renderer pushes height changes via `panel:set-bar-height` so
 // BrowserView bounds re-flow. Must stay in sync with
 // `--sidebar-zone-width` in renderer/styles.css.
@@ -64,8 +64,8 @@ export async function createMainWindow(): Promise<BrowserWindow> {
 
   // Load webapp as the default __webapp__ session so the middle panel is
   // not blank while the user authenticates.
-  navigateSession('__webapp__', 'http://localhost:3000').catch(() => {
-    log.warn('[Windows] localhost:3000 not available — BrowserView blank');
+  navigateSession('__webapp__', config.webAppUrl).catch(() => {
+    log.warn(`[Windows] webAppUrl ${config.webAppUrl} not available: BrowserView blank`);
   });
 
   mainWindow.on('resize', () => {
@@ -98,8 +98,9 @@ function computeBrowserViewBounds(windowWidth: number, windowHeight: number) {
 
 /**
  * Called by ipc when the renderer's action bar changes height:
- *   0  = hidden (idle / system tab)
- *   96 = the JorbHeader (any agent-session state)
+ *   0   = hidden (idle / __webapp__)
+ *   96  = JorbHeader (agent-session state or inbox tab)
+ *   122 = paused_for_user variant
  * We store the new value and re-flow all BrowserViews so the browser
  * area lines up flush with whatever chrome the renderer is drawing.
  */

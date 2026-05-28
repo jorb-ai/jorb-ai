@@ -6,6 +6,7 @@ import { listBrowserJobs, subscribeBrowserJobs } from '../lib/rpc';
 import type { BrowserJobRow } from '../types';
 
 const INBOX_TAB_PREFIX = '__inbox_';
+const DEFAULT_WEBAPP_URL = import.meta.env.DEV ? 'http://localhost:3000' : 'https://jorb.ai';
 
 export const App: React.FC = () => {
   const [sessions, setSessions] = useState<BrowserJobRow[]>([]);
@@ -15,6 +16,21 @@ export const App: React.FC = () => {
   const [userId, setUserId] = useState<string | null>(null);
   const [showPlaceholder, setShowPlaceholder] = useState(false);
   const [seenCompletedJobIds, setSeenCompletedJobIds] = useState<Set<string>>(new Set());
+  const [webAppUrl, setWebAppUrl] = useState(DEFAULT_WEBAPP_URL);
+
+  useEffect(() => {
+    let mounted = true;
+    window.Finbro.config.get()
+      .then(({ config }) => {
+        if (mounted && typeof config?.webAppUrl === 'string' && config.webAppUrl) {
+          setWebAppUrl(config.webAppUrl);
+        }
+      })
+      .catch((err: Error) => {
+        console.warn(`[App] config load failed: ${err.message}`);
+      });
+    return () => { mounted = false; };
+  }, []);
 
   // ── Worker-driven active-session sync ───────────────────────────
   useEffect(() => {
@@ -34,21 +50,13 @@ export const App: React.FC = () => {
 
   // ── Auth ─────────────────────────────────────────────────────────
   useEffect(() => {
-    const cleanup = window.Finbro.auth.onTokenChanged((token) => {
-      const tokenPrefix = token ? `${token.slice(0, 8)}...${token.slice(-6)}` : 'NULL';
-      setIsAuthenticated(!!token);
-      if (token) {
-        try {
-          const payload = JSON.parse(atob(token.split('.')[1]));
-          const newUserId = payload.sub || null;
-          console.log(`[App] auth token changed — token: ${tokenPrefix}, userId: ${newUserId?.slice(0, 8) ?? 'null'}`);
-          setUserId(newUserId);
-        } catch {
-          console.warn('[App] auth token changed — failed to parse JWT');
-          setUserId(null);
-        }
+    const cleanup = window.Finbro.auth.onTokenChanged((state) => {
+      setIsAuthenticated(state.isAuthenticated);
+      if (state.isAuthenticated) {
+        console.log(`[App] auth state changed: userId=${state.userId?.slice(0, 8) ?? 'null'}`);
+        setUserId(state.userId);
       } else {
-        console.log('[App] auth cleared — user logged out');
+        console.log('[App] auth cleared: user logged out');
         setUserId(null);
         setSessions([]);
         setActiveJobId(null);
@@ -160,11 +168,11 @@ export const App: React.FC = () => {
       setActiveJobId(null);
       setActiveNavId('__webapp__');
       setShowPlaceholder(false);
-      window.Finbro.panel.navigate('http://localhost:3000', '__webapp__');
+      window.Finbro.panel.navigate(webAppUrl, '__webapp__');
     }
     await window.Finbro.session.destroy(jobId);
     await window.Finbro.browser.close(jobId);
-  }, [activeJobId]);
+  }, [activeJobId, webAppUrl]);
 
   const activeJob = sessions.find((s) => s.id === activeJobId) || null;
 
@@ -180,6 +188,7 @@ export const App: React.FC = () => {
           onNavigate={handleNavigate}
           onClose={handleCloseSession}
           emailsEnabled={isAuthenticated && !!userId}
+          webAppUrl={webAppUrl}
         />
       </div>
       <div className="panel-middle">

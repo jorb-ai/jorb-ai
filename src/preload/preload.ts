@@ -30,11 +30,8 @@ const finbroApi = {
   },
 
   auth: {
-    sendAuthToken: async (token: string | null) => {
-      return ipcRenderer.invoke(IpcChannel.AUTH_SEND_TOKEN, { token });
-    },
-    onTokenChanged: (callback: (token: string | null) => void): (() => void) => {
-      const handler = (_event: IpcRendererEvent, token: string | null) => callback(token);
+    onTokenChanged: (callback: (state: { isAuthenticated: boolean; userId: string | null }) => void): (() => void) => {
+      const handler = (_event: IpcRendererEvent, state: { isAuthenticated: boolean; userId: string | null }) => callback(state);
       ipcRenderer.on(IpcChannel.AUTH_TOKEN_CHANGED, handler);
       return () => ipcRenderer.removeListener(IpcChannel.AUTH_TOKEN_CHANGED, handler);
     },
@@ -120,12 +117,5 @@ const finbroApi = {
 
 // Main renderer API
 contextBridge.exposeInMainWorld('Finbro', finbroApi);
-
-// Web app compatibility bridge (for BrowserView auth token push)
-contextBridge.exposeInMainWorld('finbro', {
-  sendAuthToken: async (token: string | null) => {
-    return ipcRenderer.invoke(IpcChannel.AUTH_SEND_TOKEN, { token });
-  },
-});
 
 export type FinbroApi = typeof finbroApi;

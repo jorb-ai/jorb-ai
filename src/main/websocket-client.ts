@@ -1,5 +1,5 @@
 import WebSocket from 'ws';
-import log, { tokenPrefix } from './logger';
+import log from './logger';
 import { getConfigValue } from './config';
 import {
   navigateSession,
@@ -40,6 +40,11 @@ const sendQueue: unknown[] = [];
 // silently stops receiving browser_job_inserted/updated after any blip.
 let hasSubscribed = false;
 
+function shouldRetainAcrossReconnect(msg: unknown): boolean {
+  const type = (msg as { type?: string } | null)?.type;
+  return type === 'stop_automation' || type === 'user_continued';
+}
+
 export function sendWsMessage(msg: unknown): void {
   const t = (msg as { type?: string } | null)?.type;
   if (t === 'subscribe') hasSubscribed = true;
@@ -67,7 +72,7 @@ export function onWsServerMessage(listener: ServerMessageListener): () => void {
 }
 
 export function connectWebSocket(token: string): void {
-  log.info(`[WebSocket] connectWebSocket entry — incoming: ${tokenPrefix(token)}, stored: ${tokenPrefix(currentToken)}`);
+  log.info(`[WebSocket] connectWebSocket entry: hasStoredToken=${!!currentToken}`);
 
   // IF ALREADY CONNECTED OR HANDSHAKING, DO NOT OPEN A SECOND WS.
   //
@@ -91,7 +96,7 @@ export function connectWebSocket(token: string): void {
     const stateLabel = ws.readyState === WebSocket.CONNECTING ? 'connecting' : 'open';
     log.warn(`[WebSocket] SKIP already-${stateLabel} — tokens_match: ${tokensMatch}, connection preserved`);
     if (!tokensMatch) {
-      log.info(`[WebSocket] Updating stored token in-place — old: ${tokenPrefix(currentToken)}, new: ${tokenPrefix(token)} (existing WS unchanged, reconnect will use new token)`);
+      log.info('[WebSocket] Updating stored token in place (existing WS unchanged, reconnect will use new token)');
       currentToken = token;
     }
     return;
@@ -99,13 +104,13 @@ export function connectWebSocket(token: string): void {
 
   currentToken = token;
   const wsUrl = getConfigValue('automationServerUrl');
-  log.info(`[WebSocket] Opening connection — url: ${wsUrl}, token: ${tokenPrefix(token)}`);
+  log.info(`[WebSocket] Opening connection: url=${wsUrl}`);
 
   try {
     ws = new WebSocket(wsUrl);
 
     ws.on('open', () => {
-      log.info(`[WebSocket] Connection open — sending register, token: ${tokenPrefix(currentToken)}`);
+      log.info('[WebSocket] Connection open: sending register');
       ws!.send(JSON.stringify({ type: 'register', token: currentToken }));
       FileSync.setWebSocket(ws!);
 
@@ -146,14 +151,17 @@ export function connectWebSocket(token: string): void {
 
     ws.on('close', (code: number, reason: Buffer) => {
       const reasonStr = reason?.toString() || '<empty>';
-      log.warn(`[WebSocket] Closed — code: ${code}, reason: "${reasonStr}", stored token: ${tokenPrefix(currentToken)}`);
-      // Drop anything that was queued for the dead connection. The
-      // renderer's rpc.ts owns the 10s request timeout; any pending
-      // correlated response will surface as a rejection there.
-      // Subscriptions survive via hasSubscribed + auto-resubscribe.
+      log.warn(`[WebSocket] Closed: code=${code}, reason="${reasonStr}", hasStoredToken=${!!currentToken}`);
+      // Drop request/response queue entries for the dead connection. The
+      // renderer's rpc.ts owns the 10s request timeout; any pending correlated
+      // response will surface as a rejection there. Stop and Continue are
+      // user safety/resume actions and should land after reconnect if possible.
       if (sendQueue.length > 0) {
-        log.info(`[WebSocket] Dropping ${sendQueue.length} queued message(s) on close`);
+        const retained = sendQueue.filter(shouldRetainAcrossReconnect);
+        const dropped = sendQueue.length - retained.length;
         sendQueue.length = 0;
+        sendQueue.push(...retained);
+        log.info(`[WebSocket] Dropping ${dropped} queued message(s) on close, retaining ${retained.length}`);
       }
       if (currentToken && code !== NORMAL_CLOSURE) {
         log.info(`[WebSocket] Scheduling reconnect in ${RECONNECT_DELAY}ms with stored token`);
@@ -339,10 +347,9 @@ function sendError(id: string, error: string): void {
 }
 
 export function sendStopAutomation(jobId: string): void {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: 'stop_automation', job_id: jobId }));
-    log.info('[WebSocket] Sent stop for job:', jobId);
-  }
+  const isOpen = ws && ws.readyState === WebSocket.OPEN;
+  sendWsMessage({ type: 'stop_automation', job_id: jobId });
+  log.info(`[WebSocket] ${isOpen ? 'Sent' : 'Queued'} stop for job: ${jobId}`);
 }
 
 /**
@@ -352,17 +359,14 @@ export function sendStopAutomation(jobId: string): void {
  * agent re-reads viewA's DOM and proceeds. See contracts.md C13.
  */
 export function sendUserContinued(jobId: string): void {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: 'user_continued', job_id: jobId }));
-    log.info('[WebSocket] Sent user_continued for job:', jobId);
-  } else {
-    log.warn(`[WebSocket] sendUserContinued — WS not open, dropping (job: ${jobId})`);
-  }
+  const isOpen = ws && ws.readyState === WebSocket.OPEN;
+  sendWsMessage({ type: 'user_continued', job_id: jobId });
+  log.info(`[WebSocket] ${isOpen ? 'Sent' : 'Queued'} user_continued for job: ${jobId}`);
 }
 
 export function disconnectWebSocket(): void {
   const state = ws ? ws.readyState : 'null';
-  log.warn(`[WebSocket] disconnectWebSocket called — ws state: ${state}, stored: ${tokenPrefix(currentToken)}`);
+  log.warn(`[WebSocket] disconnectWebSocket called: ws state=${state}, hasStoredToken=${!!currentToken}`);
   if (reconnectTimeout) {
     clearTimeout(reconnectTimeout);
     reconnectTimeout = null;
