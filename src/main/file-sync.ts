@@ -13,6 +13,7 @@ let ws: WebSocket | null = null;
 // upload_file, then forgotten. The desktop holds no truth across launches.
 const USER_DATA_PATH = app.getPath('userData');
 const FILES_DIR = path.join(USER_DATA_PATH, 'files');
+const DOWNLOAD_TIMEOUT_MS = 30_000;
 
 /**
  * Set WebSocket reference for sending acks.
@@ -88,7 +89,11 @@ export async function handleSyncTrigger(payload: {
  */
 export function resolveFilePath(relativePath: string): string | null {
   try {
-    const fullPath = path.join(FILES_DIR, relativePath);
+    const fullPath = resolveInsideFilesDir(relativePath);
+    if (!fullPath) {
+      log.warn('[FileSync] Rejected unsafe file path');
+      return null;
+    }
     if (fs.existsSync(fullPath)) return fullPath;
     log.warn('[FileSync] File not found:', fullPath);
     return null;
@@ -98,48 +103,91 @@ export function resolveFilePath(relativePath: string): string | null {
   }
 }
 
+function resolveInsideFilesDir(...segments: string[]): string | null {
+  const root = path.resolve(FILES_DIR);
+  const fullPath = path.resolve(root, ...segments);
+  if (fullPath === root || !fullPath.startsWith(root + path.sep)) return null;
+  return fullPath;
+}
+
+function safePathSegment(value: string, label: string): string {
+  const basename = path.basename(value);
+  if (
+    !basename ||
+    basename === '.' ||
+    basename === '..' ||
+    basename !== value ||
+    value.includes('/') ||
+    value.includes('\\') ||
+    value.includes('\0')
+  ) {
+    throw new Error(`Unsafe ${label}`);
+  }
+  return basename;
+}
+
 /**
  * Download a file from signed URL into files/{file_id}/{file_name}.
  */
 function downloadFile(id: string, fileName: string, signedUrl: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    try {
-      log.debug('[FileSync] Signed URL:', signedUrl);
+    let settled = false;
+    const fail = (error: Error, filePath?: string) => {
+      if (settled) return;
+      settled = true;
+      if (filePath) {
+        try { fs.unlinkSync(filePath); } catch { /* partial file may not exist */ }
+      }
+      reject(error);
+    };
 
-      const fileDir = path.join(FILES_DIR, id);
+    try {
+      const safeId = safePathSegment(id, 'file id');
+      const safeName = safePathSegment(fileName, 'file name');
+
+      const fileDir = resolveInsideFilesDir(safeId);
+      if (!fileDir) throw new Error('Unsafe file id');
       if (!fs.existsSync(fileDir)) {
         fs.mkdirSync(fileDir, { recursive: true });
       }
 
-      const filePath = path.join(fileDir, fileName);
+      const filePath = resolveInsideFilesDir(safeId, safeName);
+      if (!filePath) throw new Error('Unsafe file name');
       log.debug('[FileSync] Saving file to:', filePath);
 
-      const fileStream = fs.createWriteStream(filePath);
-
-      https.get(signedUrl, (response) => {
+      const req = https.get(signedUrl, (response) => {
         if (response.statusCode !== 200) {
-          reject(new Error(`HTTP ${response.statusCode}: ${response.statusMessage}`));
+          response.resume();
+          fail(new Error(`HTTP ${response.statusCode}: ${response.statusMessage}`), filePath);
           return;
         }
 
+        const fileStream = fs.createWriteStream(filePath);
+        response.on('error', (error) => {
+          fail(error, filePath);
+        });
         response.pipe(fileStream);
 
         fileStream.on('finish', () => {
           fileStream.close();
+          settled = true;
           resolve();
         });
 
         fileStream.on('error', (error) => {
-          try { fs.unlinkSync(filePath); } catch { /* partial file may not exist */ }
-          reject(error);
+          fail(error, filePath);
         });
 
       }).on('error', (error) => {
-        reject(error);
+        fail(error, filePath);
+      });
+
+      req.setTimeout(DOWNLOAD_TIMEOUT_MS, () => {
+        req.destroy(new Error(`Download timeout after ${DOWNLOAD_TIMEOUT_MS}ms`));
       });
 
     } catch (error) {
-      reject(error);
+      fail(error as Error);
     }
   });
 }

@@ -50,7 +50,7 @@ flowchart TB
     style Desktop fill:#F5F3FF,stroke:#7C3AED,stroke-width:2.5px,color:#5B21B6
 ```
 
-One BrowserWindow with a floating sidebar over a flush middle. The sidebar is a 180px frosted-glass card. The middle panel is full-bleed white. The window canvas is solid white so the surface reads as one continuous space. The action bar above the browser is HIDDEN on idle and on system tabs (the BrowserView reflows to the top of the middle panel). It appears only when an agent session is the active tab, and when expanded it renders the JorbHeader (mascot video plus speech bubble).
+One BrowserWindow with a floating sidebar over a flush middle. The sidebar is a 180px frosted-glass card. The middle panel is full-bleed white. The window canvas is solid white so the surface reads as one continuous space. The action bar above the browser is hidden on idle and on the `__webapp__` tab. It renders the JorbHeader for agent sessions and `__inbox_<id>__` tabs, with a taller `paused_for_user` variant for manual OTP handover.
 
 ### Dimensions
 
@@ -64,11 +64,11 @@ One BrowserWindow with a floating sidebar over a flush middle. The sidebar is a 
 | Active tab | Height | Content |
 |---|---|---|
 | idle / `__webapp__` | **0** | Hidden. BrowserView fills the middle panel top-to-bottom. |
-| any `__inbox_<id>__` | **96** | JorbHeader: mascot plus inbox-context speech bubble, no buttons. Speech is `"Reading your inbox right now for a verification code..."` when the EmailAgent is reading this inbox (per `inbox_status_changed.reading: true` from the server); `"I'll check your inbox for verification codes when you apply."` otherwise. |
+| any `__inbox_<id>__` | **96** | JorbHeader: mascot plus inbox-context speech bubble, no buttons. Speech is priority ordered: `"Reading your inbox right now for a verification code..."` when `inbox_status_changed.reading: true`; `"Find the verification code in your inbox, then return to your apply tab to type it in and hit Continue."` when any active apply session is paused for user action; `"I'll check your inbox for verification codes when you apply."` otherwise. |
 | any agent session (`queued` / `running` / `needs_review` / `completed` / `failed` / `stopped`) | **96** | JorbHeader: 60px mascot video plus speech bubble. Only the speech line changes per state. The bubble is one constant purple. **Stop button** (existing) visible during `running` / `needs_review` / `paused_for_user`. |
 | agent session in `paused_for_user` (inbox-access give_up) | **122** | JorbHeader with the longer reason-specific speech variant + the `▸ Open your inbox pre-searched…` affordance below the bubble when the event carries `gmail_search_url`. **Continue button** (new, inbox-access) visible only here, right of Stop with a 16px gap, filled primary purple. Bar grows 96 → 122 in this one state so the longer copy + affordance fit cleanly. |
 
-Renderer notifies main of the current bar height via `window.Finbro.panel.setBarHeight(h)` (0, 96, or 122 — 122 is the paused_for_user variant). `windows.ts`'s `setActionBarHeight` re-flows `BrowserView` bounds whenever the bar height changes.
+Renderer notifies main of the current bar height via `window.Finbro.panel.setBarHeight(h)` (0, 96, or 122; 122 is the paused_for_user variant). `windows.ts`'s `setActionBarHeight` re-flows `BrowserView` bounds whenever the bar height changes.
 
 ### Worker-driven navigate loads in the background
 
@@ -130,28 +130,41 @@ src/
 │   │                            queue+flush, auto-resubscribe.
 │   │                            executeNavigate passes autoShow:false.
 │   ├── auth.ts                  JWT in-memory. Push-only ingress from
-│   │                            the webapp via window.finbro.sendAuthToken.
-│   ├── file-sync.ts             Single-round-trip download on
-│   │                            file_sync_trigger (signed URL inline).
-│   │                            files/ wiped on every cold start;
-│   │                            no metadata.txt, no orphan-detection.
-│   ├── ipc.ts                   IPC handlers: config, auth, panel
-│   │                            navigate / set-bar-height, browser:stop,
-│   │                            session show / show-tailor / destroy /
-│   │                            status, session:active-changed channel.
+│   │                            the webapp via window.finbro.sendAuthToken;
+│   │                            renderer receives auth state, not JWTs.
+	│   ├── file-sync.ts             Single-round-trip download on
+	│   │                            file_sync_trigger (signed URL inline).
+	│   │                            files/ wiped on every cold start;
+	│   │                            path-contained; no metadata.txt,
+	│   │                            no orphan-detection.
+	│   ├── http-client.ts           Narrow HTTP helper for the row-X
+	│   │                            close endpoint only; derives HTTP base
+	│   │                            from the WS config and uses the in-memory
+	│   │                            JWT from auth.ts.
+	│   ├── ipc.ts                   IPC handlers: config, auth, panel
+	│   │                            navigate / set-bar-height, browser:stop,
+	│   │                            browser:close,
+	│   │                            session show / show-tailor / destroy /
+	│   │                            status, session:active-changed channel.
+│   │                            Auth token IPC is origin-gated to web-app
+│   │                            origins before reaching auth.ts.
 │   ├── chrome-import/           Dev cookie-import (profiles / cookies /
 │   │                            allowlist): in-process v10 decrypt (dev) or
 │   │                            spawn-Chrome+CDP (prod), allowlist-filter,
 │   │                            inject into persist:portal. See
 │   │                            workstreams/browser/cookie-import.md.
-│   └── rpc-bridge.ts            Renderer rpc.ts <-> WS bridge with
-│                                inbound (3 types) and outbound
-│                                (6 push events plus error) allowlists.
+	│   └── rpc-bridge.ts            Renderer rpc.ts <-> WS bridge with
+	│                                inbound (6 data request types) and
+	│                                outbound (browser jobs, agent jobs,
+	│                                inbox responses/status, and error)
+	│                                allowlists.
 │
 ├── preload/
 │   ├── preload.ts               window.Finbro for the main renderer
-│   └── preload-webview.ts       window.finbro.sendAuthToken for
-│                                BrowserView auth push
+│   ├── preload-webapp.ts        window.finbro.sendAuthToken for web-app
+│   │                            BrowserView auth push
+│   └── preload-webview.ts       neutral BrowserView bridge for portals
+│                                and inboxes; no auth-token bridge
 │
 ├── renderer/                    Main React app
 │   ├── app/
@@ -208,21 +221,22 @@ log.error('[Module] ...');  // failures
 
 Rules:
 
-- Every log message starts with `[ModuleName]` bracket prefix.
+- Production module logs start with `[ModuleName]` bracket prefix. `chrome-import/*` uses structured `chromeImport.*` event names because those logs carry object payloads for dev cookie diagnostics.
 - No emoji in log messages.
 - No raw `console.*` in main-process code.
-- `debug` is high-volume diagnostics (per-file downloads, CDP nav, signed URLs).
+- `debug` is high-volume diagnostics (per-file downloads, CDP nav). Do not log signed URLs or JWTs.
 - `info` is operational milestones (startup, connection, sync complete).
 - Default level: `info` in production, `debug` when `config.debugMode` is true.
 - Log files: `~/Library/Logs/Jorb AI/main.log` (macOS).
 
 ## Communication
 
-Single WebSocket is the ONE data channel between this shell and `web-api`. Everything (CDP, navigate, file upload, file sync, panel_switch, and pubsub live data) rides on that connection.
+Single WebSocket is the ONE live data channel between this shell and `web-api`. CDP, navigate, file upload, file sync, panel_switch, and pubsub live data ride on that connection. The narrow exception is row close: `browser:close` calls `POST /browser/jobs/{id}/close` through `http-client.ts` so the ownership-checked soft-delete uses the same HTTP auth path as the webapp.
 
 | Channel | What flows | Direction |
 |---------|-----------|-----------|
 | WebSocket (single) | CDP, navigate, file upload/sync, panel_switch, data-plane pubsub | Main <-> web-api |
+| HTTP (narrow) | `POST /browser/jobs/{id}/close` for row-X soft-delete | Main -> web-api |
 | IPC | Panel nav, `panel:set-bar-height`, auth tokens, `browser:stop`, `session:*`, `rpc:*` | Renderer <-> Main |
 | `window.Finbro` | Preload bridge for main renderer | Main <-> Renderer |
 | `window.finbro` | Auth token push from webapp (in BrowserView) | BrowserView -> Main |
@@ -237,7 +251,7 @@ Supabase Realtime is NOT used by this renderer. All data (list plus live updates
 4. Do not import `@supabase/supabase-js` in the renderer. Enforced by `package.json` (no dep) and by CSP `connect-src 'self'`.
 5. BrowserView partition is `persist:portal` for portal (viewA) and webapp (viewB / `__webapp__`) views, isolating cookies from the main renderer. Inbox views (`__inbox_<id>__`, one per row in `user_inboxes`) use per-inbox partitions `persist:inbox_<id>` so connected accounts are isolated from `persist:portal` and from each other. See `workstreams/browser/inbox-access.md`.
 6. `MAX_BROWSER_JOB_SESSIONS = 15` must equal `MAX_CONCURRENT_BROWSER_JOBS` in `web-api/finbroapi/src/browser_worker/main.py` (see `workstreams/browser/contracts.md` C9). Cap-raise rationale and the vertical-scaling tiers live in `workstreams/browser/architecture.md` "Scaling Posture".
-7. Do not reintroduce a right panel. Phase 5 was a deliberate removal. Intervention signals live in the action-bar transform, and the Approve affordance lives inside the tailor page per QA R26.
+7. Do not reintroduce a right panel. Intervention signals live in the action-bar transform, and the Approve affordance lives inside the tailor page per QA R26.
 8. Do not name colors after products ("brand", "finbroPurple"). Generic tokens only (`primary`, `neutral*`, `success` / `warning` / `danger`).
 
 ## Development
