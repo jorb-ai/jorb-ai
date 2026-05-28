@@ -143,7 +143,7 @@ src/
 │   │                            allowlist): in-process v10 decrypt (dev) or
 │   │                            spawn-Chrome+CDP (prod), allowlist-filter,
 │   │                            inject into persist:portal. See
-│   │                            workstreams/browser/shell/cookie-import.md.
+│   │                            workstreams/browser/cookie-import.md.
 │   └── rpc-bridge.ts            Renderer rpc.ts <-> WS bridge with
 │                                inbound (3 types) and outbound
 │                                (6 push events plus error) allowlists.
@@ -235,7 +235,7 @@ Supabase Realtime is NOT used by this renderer. All data (list plus live updates
 2. WebSocket is the single data channel. No parallel Supabase client, no Supabase Realtime, no other external network surface.
 3. Do not inject DOM into any BrowserView, with ONE sanctioned exception: the agent's transient purple "lock-on" highlight, drawn on the element about to be actuated so the user can watch the fill happen (`web-api/.../browseragent/tools.py` `_highlight_node`, via CDP `Runtime.callFunctionOn`). It must stay `pointer-events:none`, self-remove (~1.2s), use a single fixed id, and never mutate form fields. No other DOM injection; CDP isolation for viewA is otherwise preserved.
 4. Do not import `@supabase/supabase-js` in the renderer. Enforced by `package.json` (no dep) and by CSP `connect-src 'self'`.
-5. BrowserView partition is `persist:portal` for portal (viewA) and webapp (viewB / `__webapp__`) views, isolating cookies from the main renderer. Inbox views (`__inbox_<id>__`, one per row in `user_inboxes`) use per-inbox partitions `persist:inbox_<id>` so connected accounts are isolated from `persist:portal` and from each other. See `workstreams/browser/shell/inbox-access.md`.
+5. BrowserView partition is `persist:portal` for portal (viewA) and webapp (viewB / `__webapp__`) views, isolating cookies from the main renderer. Inbox views (`__inbox_<id>__`, one per row in `user_inboxes`) use per-inbox partitions `persist:inbox_<id>` so connected accounts are isolated from `persist:portal` and from each other. See `workstreams/browser/inbox-access.md`.
 6. `MAX_BROWSER_JOB_SESSIONS = 15` must equal `MAX_CONCURRENT_BROWSER_JOBS` in `web-api/finbroapi/src/browser_worker/main.py` (see `workstreams/browser/contracts.md` C9). Cap-raise rationale and the vertical-scaling tiers live in `workstreams/browser/architecture.md` "Scaling Posture".
 7. Do not reintroduce a right panel. Phase 5 was a deliberate removal. Intervention signals live in the action-bar transform, and the Approve affordance lives inside the tailor page per QA R26.
 8. Do not name colors after products ("brand", "finbroPurple"). Generic tokens only (`primary`, `neutral*`, `success` / `warning` / `danger`).

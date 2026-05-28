@@ -74,7 +74,7 @@ export const EmailsSection: React.FC<EmailsSectionProps> = ({
       // Tear down the BrowserView immediately to free its RAM. Cookies
       // on disk (persist:inbox_<id>) intentionally stay - cheap MVP
       // trade-off; a future janitor can sweep orphans if needed.
-      // See workstreams/browser/shell/inbox-access.md "Not in scope".
+      // See workstreams/browser/inbox-access.md "Not in scope".
       window.Finbro.session.destroy(sid);
       await remove(uuid);
     },

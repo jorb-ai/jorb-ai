@@ -372,7 +372,7 @@ export async function showOrNavigateSession(sessionId: string, url: string): Pro
  * row click": show an existing inbox tab without reload, or create it at
  * Gmail root if it does not exist yet. An explicit url means "pre-search
  * affordance": force-load the Gmail search URL even when the session already
- * exists. See workstreams/browser/shell/inbox-access.md "Pre-search affordance".
+ * exists. See workstreams/browser/inbox-access.md "Pre-search affordance".
  */
 export async function showOrNavigateInbox(sessionId: string, url?: string): Promise<void> {
   if (!isInboxSessionId(sessionId)) {

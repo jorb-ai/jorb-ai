@@ -5,7 +5,7 @@
 #
 # There is NO production analog — end-users never clear their cookies. This is a
 # dev affordance only, which is exactly why Clear is a script and Import is the
-# (also makeshift) button. See workstreams/browser/shell/cookie-import.md.
+# (also makeshift) button. See workstreams/browser/cookie-import.md.
 #
 # Electron stores per-partition data under <userData>/Partitions/<name>. The
 # userData dir is the app name: a packaged build uses the productName
