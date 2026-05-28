@@ -8,8 +8,11 @@
   "scripts": {
     "build": "tsc --project tsconfig.main.json && vite build",
     "dev": "concurrently --kill-others --raw --names vite,electron --prefix-colors blue,magenta \"npm:dev:vite\" \"npm:dev:electron\"",
+    "dev:browser": "concurrently --kill-others --raw --names vite,electron --prefix-colors blue,magenta \"npm:dev:vite:browser\" \"npm:dev:electron:browser\"",
     "dev:vite": "vite",
+    "dev:vite:browser": "vite --port 5373 --strictPort",
     "dev:electron": "wait-on tcp:5273 && tsc --project tsconfig.main.json && VITE_DEV_SERVER_URL=http://localhost:5273 electron .",
+    "dev:electron:browser": "wait-on tcp:5373 && tsc --project tsconfig.main.json && JORB_WEBAPP_URL=http://localhost:3100 JORB_AUTOMATION_SERVER_URL=ws://127.0.0.1:8100/browser/ws VITE_DEV_SERVER_URL=http://localhost:5373 electron .",
     "build:once": "npm run build && electron .",
     "package": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",

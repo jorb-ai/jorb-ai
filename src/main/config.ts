@@ -7,9 +7,19 @@ function runtimeDefaults(): AppConfig {
   const base = app.isPackaged ? PROD_DEFAULT_CONFIG : DEV_DEFAULT_CONFIG;
   return {
     ...base,
-    automationServerUrl: process.env.JORB_AUTOMATION_SERVER_URL || base.automationServerUrl,
-    webAppUrl: process.env.JORB_WEBAPP_URL || base.webAppUrl,
+    ...runtimeEnvOverrides(),
   };
+}
+
+function runtimeEnvOverrides(): Partial<AppConfig> {
+  const overrides: Partial<AppConfig> = {};
+  if (process.env.JORB_AUTOMATION_SERVER_URL) {
+    overrides.automationServerUrl = process.env.JORB_AUTOMATION_SERVER_URL;
+  }
+  if (process.env.JORB_WEBAPP_URL) {
+    overrides.webAppUrl = process.env.JORB_WEBAPP_URL;
+  }
+  return overrides;
 }
 
 // Initialize electron-store with schema validation
@@ -24,7 +34,7 @@ const store = new Store<AppConfig>({
  */
 export function getConfig(): AppConfig {
   const stored = store.store;
-  return { ...runtimeDefaults(), ...stored };
+  return { ...runtimeDefaults(), ...stored, ...runtimeEnvOverrides() };
 }
 
 /**
