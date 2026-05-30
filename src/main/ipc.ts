@@ -165,5 +165,13 @@ export function registerIpcHandlers(): void {
     }
   });
 
+  // Dev observability: renderer state transitions -> main electron-log. The
+  // renderer otherwise logs only to DevTools console, invisible to an agent
+  // watching the observer pod. One-way (send/on), so it never blocks the
+  // renderer. Tagged [Renderer] so it reads as a forwarded line.
+  ipcMain.on(IpcChannel.RENDERER_LOG, (_event, args: { scope: string; msg: string }) => {
+    log.info(`[Renderer] ${args?.scope ?? '?'}: ${args?.msg ?? ''}`);
+  });
+
   log.info('[IPC] All handlers registered');
 }

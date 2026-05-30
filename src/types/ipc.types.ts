@@ -59,6 +59,13 @@ export enum IpcChannel {
   // is a script (scripts/clear-cookies.sh), not in-app — no production analog.
   // See workstreams/browser/cookie-import.md.
   DEV_IMPORT_COOKIES = 'dev:import-cookies',
+
+  // Dev observability: renderer forwards key state transitions (action-bar
+  // mode/height, active-session binds) to the main electron-log. The renderer
+  // otherwise logs only to DevTools console, invisible to an agent watching
+  // the observer pod. One-way send, never round-trips. See
+  // workstreams/browser/dev-loop.md "Run trace".
+  RENDERER_LOG = 'renderer:log',
 }
 
 // Configuration

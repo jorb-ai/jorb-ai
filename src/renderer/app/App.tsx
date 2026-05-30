@@ -36,6 +36,7 @@ export const App: React.FC = () => {
   useEffect(() => {
     const cleanup = window.Finbro.session.onActiveChanged((sessionId) => {
       if (!sessionId) return;
+      window.Finbro.debug('app', `active-changed -> ${sessionId}`);
       setShowPlaceholder(false);
       if (sessionId.startsWith('__')) {
         setActiveNavId((prev) => (prev === sessionId ? prev : sessionId));
@@ -136,6 +137,7 @@ export const App: React.FC = () => {
     setActiveJobId(jobId);
     setActiveNavId(null);
     const shown = await window.Finbro.session.show(jobId);
+    window.Finbro.debug('app', `select ${jobId.slice(0, 8)} -> shown=${shown}`);
     setShowPlaceholder(!shown);
   }, []);
 

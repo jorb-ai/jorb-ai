@@ -50,25 +50,25 @@ flowchart TB
     style Desktop fill:#F5F3FF,stroke:#7C3AED,stroke-width:2.5px,color:#5B21B6
 ```
 
-One BrowserWindow with a floating sidebar over a flush middle. The sidebar is a 180px frosted-glass card. The middle panel is full-bleed white. The window canvas is solid white so the surface reads as one continuous space. The action bar above the browser is hidden on idle and on the `__webapp__` tab. It renders the JorbHeader for agent sessions and `__inbox_<id>__` tabs, with a taller `paused_for_user` variant for manual OTP handover.
+One BrowserWindow with a floating sidebar over a flush middle. The sidebar is a 180px frosted-glass card. The middle panel is full-bleed white. The window canvas is solid white so the surface reads as one continuous space. The action bar above the browser is hidden on idle and on the `__webapp__` tab. It renders the JorbHeader for agent sessions and `__inbox_<id>__` tabs, with a `paused_for_user` variant that adds a Continue button for manual OTP handover.
 
 ### Dimensions
 
 - Window background: solid white (`#FFFFFF`)
 - LEFT sidebar zone: **190px** (180px frosted-glass card plus 6px L/T/B gutter and 4px R gutter, 14px radius, `backdrop-filter: blur(24px) saturate(180%)`, `rgba(255,255,255,0.72)` fill, elevated drop shadow plus a 1px subtle border for white-on-white separation)
-- Middle action bar: **0 hidden / 96 JorbHeader / 122 paused_for_user** (variable)
+- Middle action bar: **0 hidden / 96 JorbHeader** (variable)
 - Browser area fills the rest
 
-### Action-bar state machine (0 hidden / 96 JorbHeader / 122 in `paused_for_user`)
+### Action-bar state machine (0 hidden / 96 JorbHeader)
 
 | Active tab | Height | Content |
 |---|---|---|
 | idle / `__webapp__` | **0** | Hidden. BrowserView fills the middle panel top-to-bottom. |
 | any `__inbox_<id>__` | **96** | JorbHeader: mascot plus inbox-context speech bubble, no buttons. Speech is priority ordered: `"Reading your inbox right now for a verification code..."` when `inbox_status_changed.reading: true`; `"Find the verification code in your inbox, then return to your apply tab to type it in and hit Continue."` when any active apply session is paused for user action; `"I'll check your inbox for verification codes when you apply."` otherwise. |
 | any agent session (`queued` / `running` / `needs_review` / `completed` / `failed` / `stopped`) | **96** | JorbHeader: 60px mascot video plus speech bubble. Only the speech line changes per state. The bubble is one constant purple. **Stop button** (existing) visible during `running` / `needs_review` / `paused_for_user`. |
-| agent session in `paused_for_user` (inbox-access give_up) | **122** | JorbHeader with the longer reason-specific speech variant + the `▸ Open your inbox pre-searched…` affordance below the bubble when the event carries `gmail_search_url`. **Continue button** (new, inbox-access) visible only here, right of Stop with a 16px gap, filled primary purple. Bar grows 96 → 122 in this one state so the longer copy + affordance fit cleanly. |
+| agent session in `paused_for_user` (inbox-access give_up) | **96** | JorbHeader with the longer reason-specific speech variant. **Continue button** (new, inbox-access) visible only here, right of Stop with a 16px gap, filled primary purple. Same 96 height as every other agent-session state. |
 
-Renderer notifies main of the current bar height via `window.Finbro.panel.setBarHeight(h)` (0, 96, or 122; 122 is the paused_for_user variant). `windows.ts`'s `setActionBarHeight` re-flows `BrowserView` bounds whenever the bar height changes.
+Renderer notifies main of the current bar height via `window.Finbro.panel.setBarHeight(h)` (0 or 96). `windows.ts`'s `setActionBarHeight` re-flows `BrowserView` bounds whenever the bar height changes.
 
 ### Worker-driven navigate loads in the background
 
@@ -120,7 +120,7 @@ src/
 │   ├── config.ts                electron-store config
 │   ├── windows.ts               Two-panel bounds. setActionBarHeight(h)
 │   │                            re-flows BrowserView bounds when the
-│   │                            renderer bar toggles 0 / 96 / 122.   
+│   │                            renderer bar toggles 0 / 96.   
 │   ├── panels.ts                Multi-session BrowserView manager.
 │   │                            navigateSession takes options.autoShow
 │   │                            (default true). showSession fires

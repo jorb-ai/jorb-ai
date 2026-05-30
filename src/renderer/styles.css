@@ -491,15 +491,6 @@ button {
   flex-shrink: 0;
 }
 
-/* paused_for_user (inbox-access) variants are long enough to wrap to 2-3
-   lines, plus the optional pre-search affordance below the speech.
-   Grow the bar a touch so everything renders cleanly. The renderer
-   pushes the matched height to main via setBarHeight so BrowserView
-   bounds re-flow under the bigger chrome. */
-.action-bar--paused {
-  height: 122px;
-}
-
 .action-bar__stop {
   height: 26px;
   padding: 0 12px;
@@ -549,34 +540,6 @@ button {
 .action-bar--inbox-tab {
   /* No visual difference today; reserved for future variants (e.g.
      a subtler tint when narrating the inbox tab's read state). */
-}
-
-/* Pre-search affordance below the JorbHeader speech bubble. Appears
-   only in `paused_for_user` state when the EmailAgent had an inbox
-   selected (every reason except no_inbox_connected). One click jumps
-   the inbox tab to the exact Gmail search the EmailAgent was using -
-   saves 30-60s of scanning vs hand-search. */
-.jorb-header__below-speech {
-  margin-top: 4px;
-}
-
-.jorb-header__presearch {
-  display: inline-flex;
-  align-items: center;
-  padding: 0;
-  font-size: 11.5px;
-  font-weight: 500;
-  color: var(--primary);
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  transition: opacity var(--dur-fast) var(--ease-out);
-  letter-spacing: 0.005em;
-}
-
-.jorb-header__presearch:hover {
-  opacity: 0.78;
-  text-decoration: underline;
 }
 
 /* ── Inbox rows (sidebar EMAILS group) ───────────────────────────── */

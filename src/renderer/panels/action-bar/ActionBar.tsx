@@ -33,9 +33,7 @@ interface ActionBarProps {
  *   queued            -> bar height 96; JorbHeader, no buttons
  *   running           -> bar height 96; JorbHeader + Stop
  *   needs_review      -> bar height 96; JorbHeader + Stop (tailor ready)
- *   paused_for_user   -> bar height 122; JorbHeader + Stop + Continue +
- *                        optional pre-search affordance under the bubble
- *                        (the 122 variant; speech wraps 2-3 lines here)
+ *   paused_for_user   -> bar height 96; JorbHeader + Stop + Continue
  *   completed/failed/stopped -> bar height 96; JorbHeader, no buttons
  */
 type Mode =
@@ -50,7 +48,6 @@ type Mode =
   | 'stopped';
 
 const BAR_HEIGHT = 96;
-const BAR_HEIGHT_PAUSED = 122;
 const INBOX_TAB_PREFIX = '__inbox_';
 
 const INBOX_TAB_SPEECH_READING =
@@ -167,9 +164,7 @@ function deriveInboxTabSpeech(
   // Note: we deliberately do NOT scope the cross-actor branch to "this
   // specific inbox is the one the EmailAgent was using" - any
   // paused_for_user in flight means the user is in a verification
-  // workflow that needs them. The pre-search affordance on the apply
-  // tab uses the exact inbox_id the event carries; here on the inbox
-  // tab the speech is workflow-wide.
+  // workflow that needs them.
 }
 
 function inboxShortIdFromSession(sessionId: string): string {
@@ -189,15 +184,15 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   const mode = deriveMode(activeJob, activeNavId);
   const inboxStatusMap = useInboxStatus();
 
-  // Bar height: hidden -> 0; paused_for_user -> 122 (room for the
-  // 2-3 line speech variant + the pre-search affordance row); anything
-  // else -> 96. Renderer pushes this to main so BrowserView bounds
-  // re-flow under the bar.
+  // Bar height: hidden -> 0; everything else -> 96. Renderer pushes this
+  // to main so BrowserView bounds re-flow under the bar.
   useEffect(() => {
-    let h = 0;
-    if (mode !== 'hidden') {
-      h = mode === 'paused_for_user' ? BAR_HEIGHT_PAUSED : BAR_HEIGHT;
-    }
+    const h = mode === 'hidden' ? 0 : BAR_HEIGHT;
+    // Dev observability: the bar's own decision (what it derived, what height it
+    // asked main to reserve). Pair with main's `[Windows] action-bar height` to
+    // tell a missing-bar bug apart: no request here -> binding/derive issue;
+    // request here but no reserve there -> bounds re-flow issue.
+    window.Finbro.debug('bar', `mode=${mode} -> setBarHeight(${h})`);
     window.Finbro.panel.setBarHeight(h);
   }, [mode]);
 
@@ -237,16 +232,6 @@ export const ActionBar: React.FC<ActionBarProps> = ({
     mode === 'running' || mode === 'needs_review' || mode === 'paused_for_user';
   const canContinue = mode === 'paused_for_user';
 
-  const pausedEvent = mode === 'paused_for_user' && activeJob ? latestPausedForUser(activeJob) : null;
-  const preSearchInboxId = pausedEvent?.inbox_id;
-  const preSearchUrl = pausedEvent?.gmail_search_url;
-
-  const handlePreSearch = () => {
-    if (!preSearchInboxId || !preSearchUrl) return;
-    const sid = `${INBOX_TAB_PREFIX}${preSearchInboxId.slice(0, 8)}__`;
-    window.Finbro.session.showOrNavigateInbox(sid, preSearchUrl);
-  };
-
   const trailing = (canStop || canContinue) ? (
     <>
       {canStop && (
@@ -265,22 +250,11 @@ export const ActionBar: React.FC<ActionBarProps> = ({
     </>
   ) : undefined;
 
-  const preSearchAffordance =
-    mode === 'paused_for_user' && preSearchInboxId && preSearchUrl ? (
-      <button
-        className="jorb-header__presearch"
-        onClick={handlePreSearch}
-        type="button"
-      >
-        {'▸ '}Open your inbox pre-searched for the sender I expected
-      </button>
-    ) : undefined;
-
   const barClassName = `action-bar ${mode === 'paused_for_user' ? 'action-bar--paused' : ''}`.trim();
 
   return (
     <div className={barClassName}>
-      <JorbHeader speech={speech} trailing={trailing} belowSpeech={preSearchAffordance} />
+      <JorbHeader speech={speech} trailing={trailing} />
     </div>
   );
 };

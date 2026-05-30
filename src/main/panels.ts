@@ -201,9 +201,13 @@ export function createSession(sessionId: string): boolean {
 
   const partition = partitionForSession(sessionId);
   const viewA = makeView(preloadForSession(sessionId), partition);
-  parentWindow.addBrowserView(viewA);
-  applyBounds(viewA);
-
+  // Do NOT attach the view here. reorderViews() is the single authority on
+  // which views are attached and in what z-order (derived from
+  // activeSessionId). Attaching on create stacked a freshly-created view on top
+  // of the active one - which broke worker-driven background navigation: the
+  // portal popped over __webapp__ with no action bar (no active-session sync).
+  // CDP and loadURL work on a detached view, so a background session loads
+  // invisibly and reorderViews places it correctly once the caller decides.
   sessions.set(sessionId, { viewA, viewB: null, tabId: null });
   log.info(
     `[Panels] createSession(${sessionId.slice(0, 12)}) — created | partition=${partition} ` +
@@ -344,6 +348,11 @@ export async function navigateSession(
 
   if (autoShow) {
     showSession(sessionId);
+  } else {
+    // Background load: attach the newly-created view in correct z-order (behind
+    // the active view) without changing the active session. The sidebar gleam
+    // is the user's only signal; they click in when they want to watch.
+    reorderViews();
   }
 
   return session.tabId;
@@ -421,7 +430,8 @@ export function showTailorView(sessionId: string, url: string): boolean {
     const partition = partitionForSession(sessionId);
     log.info(`[Panels] showTailorView(${sessionId.slice(0, 12)}) — creating viewB | partition=${partition}`);
     session.viewB = makeView('preload-webapp', partition);
-    parentWindow.addBrowserView(session.viewB);
+    // Attachment is reorderViews()'s job (via the showSession call below), which
+    // places the active session's viewB on top. See createSession's note.
   } else {
     log.debug(`[Panels] showTailorView(${sessionId.slice(0, 8)}) — viewB exists, reusing`);
   }

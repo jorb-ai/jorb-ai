@@ -29,12 +29,10 @@ export interface BrowserEvent {
   agent_job_id?: string;
   file_path?: string;
   // Inbox-access (C13): `paused_for_user` carries a give_up reason from
-  // the EmailAgent's taxonomy + optional inbox_id / gmail_search_url
-  // that power the action-bar Continue speech variant and the one-click
-  // pre-search affordance under the JorbHeader bubble.
+  // the EmailAgent's taxonomy + an optional inbox_id, powering the
+  // action-bar Continue speech variant.
   reason?: PausedForUserReason;
   inbox_id?: string;
-  gmail_search_url?: string;
 }
 
 /** Inbox-access give_up taxonomy (C13). Tab-agnostic, six values. Renderer
@@ -84,9 +82,8 @@ export type SessionDisplayStatus =
  *
  * Inbox-access adds `paused_for_user`: the EmailAgent gave up on autopilot
  * and the apply tool is awaiting a Continue click. Treated as a distinct
- * state so the action bar can render the Continue button + reason variant
- * + pre-search affordance. `resumed` (emitted when Continue resolves) flips
- * back to running.
+ * state so the action bar can render the Continue button + reason variant.
+ * `resumed` (emitted when Continue resolves) flips back to running.
  */
 export function deriveDisplayStatus(job: BrowserJobRow): SessionDisplayStatus {
   if (job.status !== 'running') return job.status;
@@ -158,6 +155,8 @@ declare global {
         unsubscribe: () => Promise<void>;
         onEvent: (callback: (event: unknown) => void) => () => void;
       };
+      // Dev observability: forward a renderer state transition to the main log.
+      debug: (scope: string, msg: string) => void;
       // Dev-only: graft real Chrome cookies into persist:portal (makeshift).
       dev: {
         importCookies: () => Promise<{ ok: boolean; error?: string; browserName?: string; profile?: string; imported?: number; total?: number; domains?: number }>;

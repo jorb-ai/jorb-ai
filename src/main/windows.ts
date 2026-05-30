@@ -106,6 +106,7 @@ function computeBrowserViewBounds(windowWidth: number, windowHeight: number) {
  */
 export function setActionBarHeight(height: number): void {
   if (height === currentBarHeight) return;
+  log.info(`[Windows] action-bar height ${currentBarHeight} -> ${height}, re-flowing BrowserView bounds`);
   currentBarHeight = height;
   if (!mainWindow) return;
   const [w, h] = mainWindow.getContentSize();

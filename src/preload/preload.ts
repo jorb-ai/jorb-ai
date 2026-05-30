@@ -21,6 +21,7 @@ const IpcChannel = {
   RPC_UNSUBSCRIBE: 'rpc:unsubscribe',
   RPC_EVENT: 'rpc:event',
   DEV_IMPORT_COOKIES: 'dev:import-cookies',
+  RENDERER_LOG: 'renderer:log',
 } as const;
 
 const finbroApi = {
@@ -106,6 +107,11 @@ const finbroApi = {
       return () => { ipcRenderer.removeListener(IpcChannel.RPC_EVENT, handler); };
     },
   },
+
+  // Dev observability: forward a renderer-side state transition to the main
+  // electron-log so an agent watching the observer pod can see it (the
+  // renderer's own console is DevTools-only). Fire-and-forget, no round-trip.
+  debug: (scope: string, msg: string) => ipcRenderer.send(IpcChannel.RENDERER_LOG, { scope, msg }),
 
   // Dev-only: graft the user's real Chrome cookies into persist:portal.
   // Makeshift trigger for the chrome-import engine; gated to dev in the UI.
