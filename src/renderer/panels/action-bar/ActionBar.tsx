@@ -34,7 +34,9 @@ interface ActionBarProps {
  *   running           -> bar height 96; JorbHeader + Stop
  *   needs_review      -> bar height 96; JorbHeader + Stop (tailor ready)
  *   paused_for_user   -> bar height 96; JorbHeader + Stop + Continue
- *   completed/failed/stopped -> bar height 96; JorbHeader, no buttons
+ *   completed/failed -> bar height 96; JorbHeader, no buttons
+ *   stopped          -> bar height 0; bar hidden, viewA handed back to the
+ *                       user full-bleed + interactive. Stop = "I'll take over."
  */
 type Mode =
   | 'hidden'
@@ -136,8 +138,6 @@ function deriveJobSpeech(mode: Mode, job: BrowserJobRow): string {
       return "All done. I've submitted your application.";
     case 'failed':
       return "I ran into a problem and couldn't finish this application.";
-    case 'stopped':
-      return 'Stopped. Start it again whenever you are ready.';
     case 'running':
     default: {
       const last = events[events.length - 1];
@@ -187,7 +187,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   // Bar height: hidden -> 0; everything else -> 96. Renderer pushes this
   // to main so BrowserView bounds re-flow under the bar.
   useEffect(() => {
-    const h = mode === 'hidden' ? 0 : BAR_HEIGHT;
+    const h = mode === 'hidden' || mode === 'stopped' ? 0 : BAR_HEIGHT;
     // Dev observability: the bar's own decision (what it derived, what height it
     // asked main to reserve). Pair with main's `[Windows] action-bar height` to
     // tell a missing-bar bug apart: no request here -> binding/derive issue;
@@ -213,7 +213,11 @@ export const ActionBar: React.FC<ActionBarProps> = ({
     return '';
   }, [mode, activeJob, activeNavId, sessions, inboxStatusMap]);
 
-  if (mode === 'hidden') return null;
+  // `stopped` hides the bar (height 0) so the user gets a full-bleed,
+  // interactive browser back after pressing Stop: viewA persists (no
+  // destroySession on stop) and CDP never blocked input, so the only thing
+  // standing between the user and the page was this chrome. Stop = take over.
+  if (mode === 'hidden' || mode === 'stopped') return null;
 
   // Inbox tabs have no buttons (observation-only) - the apply session
   // that's paused is stopped from its own tab.

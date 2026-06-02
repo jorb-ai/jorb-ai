@@ -4,6 +4,7 @@ import { getConfigValue } from './config';
 import {
   navigateSession,
   getSessionView,
+  getSessionFrames,
   showTailorView,
   showPortalView,
 } from './panels';
@@ -247,6 +248,9 @@ function handleServerMessage(message: any): void {
     case 'cdp':
       executeCdpCommand(id, params);
       break;
+    case 'cdp_capture_frames':
+      executeCdpCaptureFrames(id, params);
+      break;
     case 'file_upload':
       executeFileUpload(id, params);
       break;
@@ -281,7 +285,7 @@ async function executeNavigate(id: string, params: any): Promise<void> {
 }
 
 async function executeCdpCommand(id: string, params: any): Promise<void> {
-  const { method, args, session_id } = params;
+  const { method, args, session_id, frame_session_id } = params;
 
   if (!method || !session_id) {
     sendError(id, 'Missing required parameters: method, session_id');
@@ -301,7 +305,9 @@ async function executeCdpCommand(id: string, params: any): Promise<void> {
       webContents.debugger.attach('1.3');
     }
 
-    const result = await webContents.debugger.sendCommand(method, args || {});
+    // frame_session_id routes the command into a cross-origin child frame's CDP
+    // session (OOPIF). Undefined → the page session, identical to before.
+    const result = await webContents.debugger.sendCommand(method, args || {}, frame_session_id || undefined);
     sendResult(id, result);
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'CDP command failed';
@@ -310,8 +316,58 @@ async function executeCdpCommand(id: string, params: any): Promise<void> {
   }
 }
 
+// Fan DOMSnapshot + AXTree across every cross-origin child frame of the session's
+// viewA (see panels.ts wireFrameTracking). web-api already captures the page
+// session itself via the normal `cdp` path; this returns ONLY the child frames it
+// cannot otherwise see, each with its frame_session_id so web-api can route
+// subsequent actuation back into it. Per-frame errors are returned inline, never
+// fatal — one dead frame must not sink the whole perception pass.
+async function executeCdpCaptureFrames(id: string, params: any): Promise<void> {
+  const { session_id, snapshot_args } = params;
+
+  if (!session_id) {
+    sendError(id, 'Missing required parameters: session_id');
+    return;
+  }
+
+  try {
+    const view = getSessionView(session_id);
+    if (!view) {
+      sendError(id, `No BrowserView for session ${session_id.slice(0, 8)}`);
+      return;
+    }
+    const { webContents } = view;
+    if (!webContents.debugger.isAttached()) {
+      webContents.debugger.attach('1.3');
+    }
+
+    const frames: any[] = [];
+    for (const f of getSessionFrames(session_id)) {
+      const entry: any = { frame_session_id: f.sessionId, url: f.url };
+      try {
+        entry.snapshot = await webContents.debugger.sendCommand(
+          'DOMSnapshot.captureSnapshot', snapshot_args || {}, f.sessionId,
+        );
+      } catch (e) {
+        entry.snapshot_error = e instanceof Error ? e.message : 'captureSnapshot failed';
+      }
+      try {
+        entry.ax = await webContents.debugger.sendCommand('Accessibility.getFullAXTree', {}, f.sessionId);
+      } catch (e) {
+        entry.ax_error = e instanceof Error ? e.message : 'getFullAXTree failed';
+      }
+      frames.push(entry);
+    }
+    sendResult(id, { frames });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'cdp_capture_frames failed';
+    log.error('[WebSocket] cdp_capture_frames failed:', msg);
+    sendError(id, msg);
+  }
+}
+
 async function executeFileUpload(id: string, params: any): Promise<void> {
-  const { relative_path, cdp_method, cdp_args, session_id } = params;
+  const { relative_path, cdp_method, cdp_args, session_id, frame_session_id } = params;
 
   if (!relative_path || !cdp_method || !session_id) {
     sendError(id, 'Missing required parameters for file_upload');
@@ -329,6 +385,7 @@ async function executeFileUpload(id: string, params: any): Promise<void> {
       method: cdp_method,
       args: { ...cdp_args, files: [absolutePath] },
       session_id,
+      frame_session_id,
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'File upload failed';

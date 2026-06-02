@@ -74,6 +74,12 @@ interface Session {
   viewA: BrowserView;       // portal — always exists
   viewB: BrowserView | null; // tailor — created on demand
   tabId: number | null;      // webContents.id of viewA (set after first navigate)
+  // Cross-origin (OOPIF) child frames of viewA, keyed by their CDP session id.
+  // Populated by flatten auto-attach (see wireFrameTracking). web-api captures
+  // + actuates inside these via the cdp/cdp_capture_frames frame_session_id
+  // routing — an ATS form embedded in a cross-origin iframe (Greenhouse/Lever
+  // embeds) is otherwise a void in perception. See contracts.md C8.
+  frameSessions: Map<string, { targetId: string; url: string }>;
 }
 
 let parentWindow: BrowserWindow | null = null;
@@ -169,6 +175,35 @@ function teardownView(view: BrowserView): void {
   view.webContents.close();
 }
 
+// Track cross-origin (OOPIF) child frames of a session's viewA. Cross-origin
+// iframes run in a separate renderer process and a separate CDP session; the page
+// session's DOMSnapshot/AXTree stop at the <iframe> boundary, so a form embedded
+// in one is invisible to perception (the Greenhouse/Lever/Ashby "embed" pattern).
+// Flatten auto-attach surfaces each child frame as its own session multiplexed
+// over this same debugger connection; we keep a {childSessionId -> {targetId,url}}
+// map so web-api can route DOMSnapshot/AXTree (cdp_capture_frames) and actuation
+// (cdp with frame_session_id) into the frame. Called once, right after attach.
+function wireFrameTracking(session: Session, sessionId: string): void {
+  const dbg = session.viewA.webContents.debugger;
+  dbg.on('message', (_event, method, params) => {
+    if (method === 'Target.attachedToTarget') {
+      const ti = params.targetInfo || {};
+      // Only cross-origin iframe documents carry forms to perceive; skip workers
+      // and other auto-attached target types (cdp_capture_frames runs DOMSnapshot,
+      // which is meaningless on a non-document target).
+      if (ti.type === 'iframe') {
+        session.frameSessions.set(params.sessionId, { targetId: ti.targetId, url: ti.url || '' });
+      }
+    } else if (method === 'Target.detachedFromTarget') {
+      session.frameSessions.delete(params.sessionId);
+    }
+  });
+  dbg
+    .sendCommand('Target.setAutoAttach', { autoAttach: true, flatten: true, waitForDebuggerOnStart: false })
+    .then(() => log.debug(`[Panels] frame auto-attach enabled: ${sessionId.slice(0, 8)}`))
+    .catch((err) => log.warn(`[Panels] setAutoAttach failed (${sessionId.slice(0, 8)}): ${(err as Error).message}`));
+}
+
 // ── Public API ───────────────────────────────────────────────────────
 
 export function init(window: BrowserWindow, bounds: PanelBounds): void {
@@ -208,7 +243,7 @@ export function createSession(sessionId: string): boolean {
   // portal popped over __webapp__ with no action bar (no active-session sync).
   // CDP and loadURL work on a detached view, so a background session loads
   // invisibly and reorderViews places it correctly once the caller decides.
-  sessions.set(sessionId, { viewA, viewB: null, tabId: null });
+  sessions.set(sessionId, { viewA, viewB: null, tabId: null, frameSessions: new Map() });
   log.info(
     `[Panels] createSession(${sessionId.slice(0, 12)}) — created | partition=${partition} ` +
     `| total=${sessions.size} | jobs=${countJobSessions()}/${MAX_BROWSER_JOB_SESSIONS}`,
@@ -325,6 +360,9 @@ export async function navigateSession(
     try {
       session.viewA.webContents.debugger.attach('1.3');
       log.info(`[Panels] CDP debugger attached: ${sessionId.slice(0, 8)}`);
+      // Enable flatten auto-attach BEFORE loadURL so cross-origin iframes that
+      // appear during the load surface as tracked child sessions.
+      wireFrameTracking(session, sessionId);
     } catch (err) {
       log.error(`[Panels] Failed to attach debugger:`, err);
     }
@@ -508,6 +546,17 @@ export function destroyAll(): void {
 
 export function getSessionView(sessionId: string): BrowserView | null {
   return sessions.get(sessionId)?.viewA || null;
+}
+
+// Cross-origin child frame sessions of viewA (see wireFrameTracking). web-api's
+// cdp_capture_frames action fans DOMSnapshot/AXTree across these so the agent can
+// perceive a form embedded in a cross-origin iframe. The url is the attach-time
+// value (often empty until the frame navigates); web-api matches frames by the
+// documentURL inside each captured snapshot, not this field.
+export function getSessionFrames(sessionId: string): { sessionId: string; url: string }[] {
+  const s = sessions.get(sessionId);
+  if (!s) return [];
+  return Array.from(s.frameSessions.entries()).map(([sid, info]) => ({ sessionId: sid, url: info.url }));
 }
 
 export function layoutBrowserViews(bounds: PanelBounds): void {
