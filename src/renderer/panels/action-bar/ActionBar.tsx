@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import type {
   BrowserEvent,
   BrowserJobRow,
@@ -184,6 +184,16 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   const mode = deriveMode(activeJob, activeNavId);
   const inboxStatusMap = useInboxStatus();
 
+  // Stop is async: the press travels IPC -> WS -> server, the apply loop and
+  // the cross-process document tailor observe it a beat later, then the job
+  // flips to `stopped` and this bar hides. Until then the button holds a
+  // "Stopping..." state so the press registers visibly instead of feeling dead.
+  // Reset when the active job changes - a fresh run must start un-stopping.
+  const [stopping, setStopping] = useState(false);
+  useEffect(() => {
+    setStopping(false);
+  }, [activeJob?.id]);
+
   // Bar height: hidden -> 0; everything else -> 96. Renderer pushes this
   // to main so BrowserView bounds re-flow under the bar.
   useEffect(() => {
@@ -239,8 +249,20 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   const trailing = (canStop || canContinue) ? (
     <>
       {canStop && (
-        <button className="action-bar__stop" onClick={() => onStop(activeJob!.id)}>
-          Stop
+        <button
+          className="action-bar__stop"
+          onClick={() => { setStopping(true); onStop(activeJob!.id); }}
+          disabled={stopping}
+          aria-busy={stopping}
+        >
+          {stopping ? (
+            <>
+              <span className="action-bar__stop-spinner" aria-hidden="true" />
+              Stopping…
+            </>
+          ) : (
+            'Stop Agent'
+          )}
         </button>
       )}
       {canContinue && (
