@@ -8,7 +8,7 @@ Orientation for agents and humans working in this repository. Public-facing pitc
 - **Stack:** Electron + TypeScript + React (Vite HMR). One BrowserWindow with a floating sidebar plus an adaptive action bar above a flush-white middle panel.
 - **Role:** Layer 1 shell. All intelligence lives in `web-api/` (the Python brain). The embedded `web-app` renders inside a BrowserView as Layer 2 (peer app). Communication is a SINGLE WebSocket. CDP, navigate, file sync, panel switch, and pubsub data all ride it.
 - **Critical contract:** `MAX_BROWSER_JOB_SESSIONS` here MUST equal `MAX_CONCURRENT_BROWSER_JOBS` in `web-api/finbroapi/src/browser_worker/main.py` (see `workstreams/browser/contracts.md` C9).
-- **Next read:** `workstreams/browser/` (workstream.md, architecture.md, handoff.md) in the HQ monorepo for system-wide architecture. This file is the visual-language plus source-structure reference.
+- **Next read:** `workstreams/browser/` (workstream.md, architecture.md, contracts.md) in the HQ monorepo for system-wide architecture. This file is the visual-language plus source-structure reference.
 
 ## Branch Policy
 
@@ -22,7 +22,6 @@ For the full system architecture, read the HQ workstream:
 
 - `workstreams/browser/workstream.md` for the entry point and current invariants
 - `workstreams/browser/architecture.md` for the full system architecture
-- `workstreams/browser/files.md` for the exhaustive cross-repo file map
 - `workstreams/browser/contracts.md` for cross-repo couplings (mandatory pre-read before any cross-repo edit)
 - `workstreams/browser/changelog.md` for the architectural-decisions record
 
@@ -50,30 +49,30 @@ flowchart TB
     style Desktop fill:#F5F3FF,stroke:#7C3AED,stroke-width:2.5px,color:#5B21B6
 ```
 
-One BrowserWindow with a floating sidebar over a flush middle. The sidebar is a 180px frosted-glass card. The middle panel is full-bleed white. The window canvas is solid white so the surface reads as one continuous space. The action bar above the browser is hidden on idle and on the `__webapp__` tab. It renders the JorbHeader for agent sessions and `__inbox_<id>__` tabs, with a `paused_for_user` variant that adds a Continue button for manual OTP handover.
+One BrowserWindow with a floating sidebar over a flush middle. The sidebar is a 180px frosted-glass card. The middle panel is full-bleed white. The window canvas is solid white so the surface reads as one continuous space. The action bar above the browser is hidden on idle and on the `__webapp__` tab. It renders the JorbHeader for agent sessions and `__inbox_<id>__` tabs - agent sessions add a 28px browser-chrome nav strip (back/forward + read-only URL) beneath it - with a `paused_for_user` variant that adds a Continue button for manual handover (OTP retrieval or sign-in - the agent never handles passwords).
 
 ### Dimensions
 
 - Window background: solid white (`#FFFFFF`)
 - LEFT sidebar zone: **190px** (180px frosted-glass card plus 6px L/T/B gutter and 4px R gutter, 14px radius, `backdrop-filter: blur(24px) saturate(180%)`, `rgba(255,255,255,0.72)` fill, elevated drop shadow plus a 1px subtle border for white-on-white separation)
-- Middle action bar: **0 hidden / 96 JorbHeader** (variable)
+- Middle action bar: **0 hidden / 84 JorbHeader row (inbox tabs) / 112 JorbHeader + 28px nav strip (agent sessions)** (variable)
 - Browser area fills the rest
 
-### Action-bar state machine (0 hidden / 96 JorbHeader)
+### Action-bar state machine (0 hidden / 84 header-only / 112 header + nav strip)
 
 | Active tab | Height | Content |
 |---|---|---|
 | idle / `__webapp__` | **0** | Hidden. BrowserView fills the middle panel top-to-bottom. |
-| any `__inbox_<id>__` | **96** | JorbHeader: mascot plus inbox-context speech bubble, no buttons. Speech is priority ordered: `"Reading your inbox right now for a verification code..."` when `inbox_status_changed.reading: true`; `"Find the verification code in your inbox, then return to your apply tab to type it in and hit Continue."` when any active apply session is paused for user action; `"I'll check your inbox for verification codes when you apply."` otherwise. |
-| any agent session (`queued` / `running` / `needs_review` / `completed` / `failed`) | **96** | JorbHeader: 60px mascot video plus speech bubble. Only the speech line changes per state. The bubble is one constant purple. **Stop button** (existing) visible during `running` / `needs_review` / `paused_for_user`. |
+| any `__inbox_<id>__` | **84** | JorbHeader row only: mascot plus inbox-context speech bubble, no buttons, no nav strip. Speech is priority ordered: `"Reading your inbox right now for a verification code..."` when `inbox_status_changed.reading: true`; `"Find the verification code in your inbox, then return to your apply tab to type it in and hit Continue."` when any active apply session is paused for user action; `"I'll check your inbox for verification codes when you apply."` otherwise. |
+| any agent session (`queued` / `running` / `needs_review` / `completed` / `failed`) | **112** | JorbHeader row (84: 60px mascot video plus speech bubble; only the speech line changes per state, the bubble is one constant purple; **Stop button** visible during `running` / `needs_review` / `paused_for_user`) + the **browser-chrome nav strip** (28: live back/forward arrows via `webContents.navigationHistory` + a read-only URL pill; main pushes nav state on every `did-navigate`). |
 | agent session `stopped` (user pressed Stop) | **0** | Bar hidden. viewA is handed back full-bleed and interactive so the user drives the page like a normal browser - the view persists (no `destroySession` on stop) and CDP never blocked input. Stop = "I'll take over." |
-| agent session in `paused_for_user` (inbox-access give_up) | **96** | JorbHeader with the longer reason-specific speech variant. **Continue button** (new, inbox-access) visible only here, right of Stop with a 16px gap, filled primary purple. Same 96 height as every other agent-session state. |
+| agent session in `paused_for_user` (OTP give_up or `password_required`) | **112** | JorbHeader with the reason-specific speech variant. **Continue button** visible only here, LEFT of Stop with a 16px gap, a bright green gleaming pill (the session-row gleam language - the "your turn" signal). Same height as every other agent-session state. |
 
-Renderer notifies main of the current bar height via `window.Finbro.panel.setBarHeight(h)` (0 or 96). `windows.ts`'s `setActionBarHeight` re-flows `BrowserView` bounds whenever the bar height changes.
+Renderer notifies main of the current bar height via `window.Finbro.panel.setBarHeight(h)` (0 / 84 / 112). `windows.ts`'s `setActionBarHeight` re-flows `BrowserView` bounds whenever the bar height changes. All bar speech is a fixed English vocabulary - no URLs (the nav strip shows the URL), no exception text, no agent-written free text.
 
 ### Worker-driven navigate loads in the background
 
-When the worker sends `navigate` over the WebSocket, `panels.ts:executeNavigate` passes `autoShow: false` to `navigateSession`. viewA is created, the URL loads, CDP attaches, but the view is NOT brought to the front. The browser-tab analogy: opening a new tab in the background while you keep working on the foreground one. The sidebar's purple gleam (via the `browser_job_inserted` pubsub push) is the user's signal that a new session exists. They click in when they want to watch.
+When the worker sends `navigate` over the WebSocket, `websocket-client.ts:executeNavigate` passes `autoShow: false` to `navigateSession`. viewA is created, the URL loads, CDP attaches, but the view is NOT brought to the front. The browser-tab analogy: opening a new tab in the background while you keep working on the foreground one. The sidebar's purple gleam (via the `browser_job_inserted` pubsub push) is the user's signal that a new session exists. They click in when they want to watch.
 
 User-initiated paths (initial `__webapp__` load on app start, sidebar system-tab clicks routed through `showOrNavigateSession`) keep `autoShow: true` (the default). `panels.ts:showSession` still fires `session:active-changed` over IPC for those user-initiated calls, and the renderer's `window.Finbro.session.onActiveChanged(cb)` listener keeps `activeJobId` in lockstep with whichever view is actually on top.
 
@@ -84,7 +83,7 @@ Mirrors the `web-app` webapp's look and feel so the desktop shell and the webapp
 - **Typography:** system font stack (`-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif`), same as `web-app/tailwind.config.ts`. No web fonts. No Google Fonts CDN.
 - **Color:** single-accent system. `primary` = `#290E99` (`finbro-purple` in the webapp) reserved for "act now" signals: the agent-live dot, the gleaming sweep on running session rows, and the JorbHeader speech bubble. NOT used for plain active-row state. Neutrals are a Tailwind-aligned gray scale (`gray-50`...`gray-900`) matching `web-app`'s actual usage. Semantic `success` / `warning` / `danger` carry the session-row status signals: a green glow (completed), an amber glow (needs-attention), a static red tint (failed), plus small marks and icons.
 - **Chrome:** solid white window canvas. The sidebar is a frosted-glass card (`rgba(255,255,255,0.72)` over `backdrop-filter: blur(24px) saturate(180%)`) with an inset white-highlight plus an elevated drop shadow plus a soft 1px border so it reads as a floating object on white rather than a contrasting zone. Tight gutter (6px L/T/B plus 4px R), with almost no gray space. Middle panel is full-bleed white. Interactive rows use `rounded-md` (6px) and 28px height for compact density.
-- **Active state:** subtle pill, with `gray-100` fill plus 1px `gray-200` inset ring plus `font-medium` plus `gray-900` text. Hover is `gray-50` fill. The two states share a fill family so hover feels like a precursor to active, not a competing treatment.
+- **Active state:** subtle pill, with `gray-100` fill plus 1px `gray-200` inset ring plus `font-medium` plus `gray-900` text. Hover is a glass-grey wash (`rgba(209,213,219,0.10)`, web-app's `line-strong/10`). The two states share a fill family so hover feels like a precursor to active, not a competing treatment.
 - **Running state:** gleaming sweep, a translucent primary gradient swept L-to-R over the row at ~2.4s ease-in-out infinite. Layers on top of the active pill if the row is also active. Runs through the tailoring sub-flow too. Stops only on a terminal status.
 - **Brand:** `logo_wordmark.png` image asset in the sidebar header (48px container, logo 20px tall). No border-bottom. Breathing space below carries the separation.
 - **Motion:** breathe, not flash. Live dot pulses at ~1.8s. JorbHeader speech bubble re-fires `animate-jorb-enter` (0.35s fade-up) on each new agent message. Ambient halo runs `animate-jorb-glow` (3.5s ease-in-out infinite) while running. No typewriter, no spinners.
@@ -96,7 +95,8 @@ The shell is a browser at heart, with tabs, switching, loading, closing. For any
 - Switching tabs is a z-order change, instant, never a reload. The tab keeps its scroll, sign-in, and form state (`showOrNavigateSession`).
 - A tab loads once on first open. After that, it persists.
 - Closing a tab is immediate and irreversible, and the close affordance is always reachable, every tab, every state.
-- A tab that is loading, or that failed to load, says so. Never a blank or a stale page.
+- A tab that is loading says so: the grey page skeleton (`TabLoadingSkeleton`) holds the middle panel until the tab's first load completes (`panels.ts` skeleton mode — all views detached, attach on first `did-finish-load`). Never a blank view, never a held stale page.
+- A session-less job row (after an app restart, or queued pre-navigate) reopens onto its posting page on click — a sidebar row is a door back to the portal, never a status tombstone.
 
 Becoming a general-purpose browser is not a goal (no address bar, no bookmarks). It's a constraint. For the browser-like things the shell does do, do them the browser way.
 
@@ -121,7 +121,7 @@ src/
 │   ├── config.ts                electron-store config
 │   ├── windows.ts               Two-panel bounds. setActionBarHeight(h)
 │   │                            re-flows BrowserView bounds when the
-│   │                            renderer bar toggles 0 / 96.   
+│   │                            renderer bar toggles 0 / 84 / 112.   
 │   ├── panels.ts                Multi-session BrowserView manager.
 │   │                            navigateSession takes options.autoShow
 │   │                            (default true). showSession fires
@@ -131,7 +131,7 @@ src/
 │   │                            queue+flush, auto-resubscribe.
 │   │                            executeNavigate passes autoShow:false.
 │   ├── auth.ts                  JWT in-memory. Push-only ingress from
-│   │                            the webapp via window.finbro.sendAuthToken;
+│   │                            the webapp via window.electron.sendAuthToken;
 │   │                            renderer receives auth state, not JWTs.
 	│   ├── file-sync.ts             Single-round-trip download on
 	│   │                            file_sync_trigger (signed URL inline).
@@ -143,10 +143,12 @@ src/
 	│   │                            from the WS config and uses the in-memory
 	│   │                            JWT from auth.ts.
 	│   ├── ipc.ts                   IPC handlers: config, auth, panel
-	│   │                            navigate / set-bar-height, browser:stop,
-	│   │                            browser:close,
-	│   │                            session show / show-tailor / destroy /
-	│   │                            status, session:active-changed channel.
+	│   │                            navigate / set-bar-height, browser:stop /
+	│   │                            continue / close,
+	│   │                            session show / show-tailor /
+	│   │                            show-or-navigate-inbox / preload-inbox /
+	│   │                            destroy / status / nav-state / history-go,
+	│   │                            session:active-changed channel.
 │   │                            Auth token IPC is origin-gated to web-app
 │   │                            origins before reaching auth.ts.
 │   ├── chrome-import/           Dev cookie-import (profiles / cookies /
@@ -155,17 +157,18 @@ src/
 │   │                            inject into persist:portal. See
 │   │                            workstreams/browser/cookie-import.md.
 	│   └── rpc-bridge.ts            Renderer rpc.ts <-> WS bridge with
-	│                                inbound (6 data request types) and
-	│                                outbound (browser jobs, agent jobs,
-	│                                inbox responses/status, and error)
+	│                                inbound (4 data request types) and
+	│                                outbound (browser jobs, inbox
+	│                                responses/status, and error)
 	│                                allowlists.
 │
 ├── preload/
 │   ├── preload.ts               window.Finbro for the main renderer
-│   ├── preload-webapp.ts        window.finbro.sendAuthToken for web-app
-│   │                            BrowserView auth push
+│   ├── preload-webapp.ts        window.electron (sendAuthToken + openExternal)
+│   │                            for web-app BrowserViews; injects __ELECTRON_ENV__
 │   └── preload-webview.ts       neutral BrowserView bridge for portals
-│                                and inboxes; no auth-token bridge
+│                                and inboxes; __ELECTRON_ENV__ only, no
+│                                capability bridge
 │
 ├── renderer/                    Main React app
 │   ├── app/
@@ -183,11 +186,11 @@ src/
 │   │   ├── session-list/        Sidebar
 │   │   └── action-bar/          Adaptive action bar (renders JorbHeader
 │   │                            when expanded)
-│   ├── components/              SessionRow, JorbHeader, SessionPlaceholder
+│   ├── components/              SessionRow, JorbHeader, TabLoadingSkeleton
 │   ├── lib/
 │   │   ├── rpc.ts               WS-backed data layer. UUID correlation,
 │   │   │                        10s timeout. listBrowserJobs /
-│   │   │                        subscribeBrowserJobs / watchAgentJob.
+│   │   │                        subscribeBrowserJobs / user-inbox calls.
 │   │   └── colors.ts            Design tokens (generic names)
 │   ├── assets/                  logos/ plus videos/jorb1..8.webm
 │   ├── types.ts                 BrowserJobRow, BrowserEvent,
@@ -240,15 +243,15 @@ Single WebSocket is the ONE live data channel between this shell and `web-api`. 
 | HTTP (narrow) | `POST /browser/jobs/{id}/close` for row-X soft-delete | Main -> web-api |
 | IPC | Panel nav, `panel:set-bar-height`, auth tokens, `browser:stop`, `session:*`, `rpc:*` | Renderer <-> Main |
 | `window.Finbro` | Preload bridge for main renderer | Main <-> Renderer |
-| `window.finbro` | Auth token push from webapp (in BrowserView) | BrowserView -> Main |
+| `window.electron` | Webapp capability bridge (auth token push + open-external) in BrowserView | BrowserView -> Main |
 
-Supabase Realtime is NOT used by this renderer. All data (list plus live updates for `browser_jobs` and `agent_jobs`) flows over the WS via `rpc-bridge.ts` plus `rpc.ts`. See `workstreams/browser/changelog.md` 2026-04-11 "Dumb-terminal data plane" for why.
+Supabase Realtime is NOT used by this renderer. All data (list plus live updates for `browser_jobs`) flows over the WS via `rpc-bridge.ts` plus `rpc.ts`. See `workstreams/browser/changelog.md` 2026-04-11 "Dumb-terminal data plane" for why.
 
 ## Rules
 
 1. No business logic in this shell. It's a dumb terminal.
 2. WebSocket is the single data channel. No parallel Supabase client, no Supabase Realtime, no other external network surface.
-3. Do not inject DOM into any BrowserView, with ONE sanctioned exception: the agent's transient purple "lock-on" highlight, drawn on the element about to be actuated so the user can watch the fill happen (`web-api/.../browseragent/tools.py` `_highlight_node`, via CDP `Runtime.callFunctionOn`). It must stay `pointer-events:none`, self-remove (~1.2s), use a single fixed id, and never mutate form fields. No other DOM injection; CDP isolation for viewA is otherwise preserved.
+3. Do not inject DOM into any BrowserView, with ONE sanctioned exception: the agent's transient purple "lock-on" highlight, drawn on the element about to be actuated so the user can watch the fill happen (`web-api/.../browseragent/engine/actuation.py` `_highlight_node`, via CDP `Runtime.callFunctionOn`). It must stay `pointer-events:none`, self-remove (~1.2s), use a single fixed id, and never mutate form fields. No other DOM injection; CDP isolation for viewA is otherwise preserved.
 4. Do not import `@supabase/supabase-js` in the renderer. Enforced by `package.json` (no dep) and by CSP `connect-src 'self'`.
 5. BrowserView partition is `persist:portal` for portal (viewA) and webapp (viewB / `__webapp__`) views, isolating cookies from the main renderer. Inbox views (`__inbox_<id>__`, one per row in `user_inboxes`) use per-inbox partitions `persist:inbox_<id>` so connected accounts are isolated from `persist:portal` and from each other. See `workstreams/browser/inbox-access.md`.
 6. `MAX_BROWSER_JOB_SESSIONS = 15` must equal `MAX_CONCURRENT_BROWSER_JOBS` in `web-api/finbroapi/src/browser_worker/main.py` (see `workstreams/browser/contracts.md` C9). Cap-raise rationale and the vertical-scaling tiers live in `workstreams/browser/architecture.md` "Scaling Posture".

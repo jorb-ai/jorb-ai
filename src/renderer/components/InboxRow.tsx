@@ -1,12 +1,14 @@
 /**
  * InboxRow - one row per connected inbox in the sidebar EMAILS group.
- * Visual chrome matches `sidebar__nav-item` (28px, rounded-md, gray-100
- * hover/active). Click is a z-order switch to the inbox tab via
+ * Visual chrome matches `sidebar__nav-item` (28px, rounded-md, glass-grey
+ * hover, gray-100 active). Click is a z-order switch to the inbox tab via
  * `session.showOrNavigateInbox`. X on hover/active triggers soft-remove.
  *
- * No status indicators (queued/running/etc) - inboxes are sidebar nav,
- * not agent sessions. The inbox tab's own JorbHeader carries the
- * read/idle/cross-actor-paused narration (C14).
+ * Text-only, NO provider icon - sidebar rows are uniform plain rows
+ * (sessions and nav items carry no icons either); the provider marks live
+ * only in the add-inbox popover. No status indicators (queued/running/etc)
+ * - inboxes are sidebar nav, not agent sessions. The inbox tab's own
+ * JorbHeader carries the read/idle/cross-actor-paused narration (C14).
  */
 import React, { useState } from 'react';
 import type { UserInbox } from '../types';
@@ -42,13 +44,6 @@ export const InboxRow: React.FC<InboxRowProps> = ({ inbox, isActive, onClick, on
       onMouseLeave={() => setHovered(false)}
       role="button"
     >
-      <span className="inbox-row__icon" aria-hidden>
-        {/* Plain lucide-mail glyph as SVG to avoid pulling lucide-react in. */}
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="3" y="5" width="18" height="14" rx="2" />
-          <path d="M3 7l9 6 9-6" />
-        </svg>
-      </span>
       <span className="inbox-row__label">{label}</span>
       {showCloseBtn && !isPending && (
         <button

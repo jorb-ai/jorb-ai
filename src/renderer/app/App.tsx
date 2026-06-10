@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { SessionList } from '../panels/session-list/SessionList';
 import { ActionBar } from '../panels/action-bar/ActionBar';
-import { SessionPlaceholder } from '../components/SessionPlaceholder';
+import { TabLoadingSkeleton } from '../components/TabLoadingSkeleton';
 import { listBrowserJobs, subscribeBrowserJobs } from '../lib/rpc';
 import type { BrowserJobRow } from '../types';
 
@@ -14,7 +14,10 @@ export const App: React.FC = () => {
   const [activeNavId, setActiveNavId] = useState<string | null>('__webapp__');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
-  const [showPlaceholder, setShowPlaceholder] = useState(false);
+  // The active tab hasn't painted yet (main keeps every view detached) —
+  // the middle panel shows the loading skeleton until main's
+  // active-changed push flips loading off. Main's truth, mirrored here.
+  const [tabLoading, setTabLoading] = useState(false);
   const [seenCompletedJobIds, setSeenCompletedJobIds] = useState<Set<string>>(new Set());
   const [webAppUrl, setWebAppUrl] = useState(DEFAULT_WEBAPP_URL);
 
@@ -32,12 +35,12 @@ export const App: React.FC = () => {
     return () => { mounted = false; };
   }, []);
 
-  // ── Worker-driven active-session sync ───────────────────────────
+  // ── Active-session sync (user click, worker auto-jump, load-complete) ──
   useEffect(() => {
-    const cleanup = window.Finbro.session.onActiveChanged((sessionId) => {
+    const cleanup = window.Finbro.session.onActiveChanged((sessionId, loading) => {
       if (!sessionId) return;
-      window.Finbro.debug('app', `active-changed -> ${sessionId}`);
-      setShowPlaceholder(false);
+      window.Finbro.debug('app', `active-changed -> ${sessionId}${loading ? ' (loading)' : ''}`);
+      setTabLoading(loading);
       if (sessionId.startsWith('__')) {
         setActiveNavId((prev) => (prev === sessionId ? prev : sessionId));
         setActiveJobId((prev) => (prev === null ? prev : null));
@@ -62,7 +65,7 @@ export const App: React.FC = () => {
         setSessions([]);
         setActiveJobId(null);
         setActiveNavId('__webapp__');
-        setShowPlaceholder(false);
+        setTabLoading(false);
         setSeenCompletedJobIds(new Set());
       }
     });
@@ -136,22 +139,40 @@ export const App: React.FC = () => {
   const handleSelectSession = useCallback(async (jobId: string) => {
     setActiveJobId(jobId);
     setActiveNavId(null);
-    const shown = await window.Finbro.session.show(jobId);
-    window.Finbro.debug('app', `select ${jobId.slice(0, 8)} -> shown=${shown}`);
-    setShowPlaceholder(!shown);
-  }, []);
+    const state = await window.Finbro.session.show(jobId);
+    window.Finbro.debug('app', `select ${jobId.slice(0, 8)} -> ${state}`);
+    if (state !== 'shown') setTabLoading(true);
+    if (state === 'none') {
+      // No live view (a job from an earlier app run, or queued pre-navigate):
+      // open the session straight onto the posting page. The skeleton is
+      // already up; main attaches the view on first-load completion.
+      const job = sessions.find((s) => s.id === jobId);
+      if (job?.url) {
+        try {
+          await window.Finbro.panel.navigate(job.url, jobId);
+        } catch (e) {
+          window.Finbro.debug('app', `navigate ${jobId.slice(0, 8)} failed: ${(e as Error).message}`);
+          setTabLoading(false);
+        }
+      } else {
+        // No posting URL on the row (old/custom rows) — nothing to open.
+        window.Finbro.debug('app', `select ${jobId.slice(0, 8)} -> no url, falling back to webapp`);
+        setTabLoading(false);
+        setActiveJobId(null);
+        setActiveNavId('__webapp__');
+        window.Finbro.panel.navigate(webAppUrl, '__webapp__');
+      }
+    }
+  }, [sessions, webAppUrl]);
 
   const handleNavigate = useCallback((url: string, sessionId?: string) => {
     const sid = sessionId ?? '__webapp__';
     setActiveJobId(null);
     setActiveNavId(sid);
-    setShowPlaceholder(false);
-    // Inbox tabs are managed by `session.showOrNavigateInbox` (called
-    // by EmailsSection directly, plus the JorbHeader pre-search
-    // affordance). Generic panel.navigate would route through
-    // showOrNavigateSession's origin-match short-circuit, which would
-    // swallow Gmail-search URL fragment changes. So we DON'T fire
-    // panel.navigate for inbox tabs - we just sync activeNavId.
+    // Inbox tabs are managed by `session.showOrNavigateInbox` (called by
+    // EmailsSection directly), which owns the inbox view's lifecycle. So
+    // we DON'T fire panel.navigate for inbox tabs - we just sync
+    // activeNavId.
     if (sid.startsWith(INBOX_TAB_PREFIX)) return;
     window.Finbro.panel.navigate(url, sid);
   }, []);
@@ -169,7 +190,6 @@ export const App: React.FC = () => {
     if (activeJobId === jobId) {
       setActiveJobId(null);
       setActiveNavId('__webapp__');
-      setShowPlaceholder(false);
       window.Finbro.panel.navigate(webAppUrl, '__webapp__');
     }
     await window.Finbro.session.destroy(jobId);
@@ -202,7 +222,7 @@ export const App: React.FC = () => {
           onContinue={handleContinue}
         />
         <div className="panel-browser">
-          {showPlaceholder && activeJob && <SessionPlaceholder job={activeJob} />}
+          {tabLoading && <TabLoadingSkeleton />}
         </div>
       </div>
     </div>

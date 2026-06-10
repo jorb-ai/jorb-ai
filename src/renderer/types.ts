@@ -7,9 +7,12 @@ export interface BrowserJobRow {
   completed_at?: string | null;
   result_meta?: any;
   error_message?: string;
-  // Enriched from jobs table (may be null for old rows)
+  // Enriched from jobs table (may be null for old rows). `url` is the
+  // posting link (jobs.link) — clicking a row with no live view navigates
+  // its session straight onto the posting page.
   title?: string;
   company?: string;
+  url?: string | null;
 }
 
 export interface BrowserEvent {
@@ -28,30 +31,39 @@ export interface BrowserEvent {
   doc_type?: 'resume' | 'cover_letter';
   agent_job_id?: string;
   file_path?: string;
-  // Inbox-access (C13): `paused_for_user` carries a give_up reason from
-  // the EmailAgent's taxonomy + an optional inbox_id, powering the
-  // action-bar Continue speech variant.
+  // C13: `paused_for_user` carries a reason code (+ optional inbox_id for
+  // the EmailAgent give_up reasons), powering the action-bar Continue
+  // speech variant.
   reason?: PausedForUserReason;
   inbox_id?: string;
 }
 
-/** Inbox-access give_up taxonomy (C13). Tab-agnostic, six values. Renderer
- * holds the matching speech strings; server emits only the reason code. */
+/** `paused_for_user` reason taxonomy (C13). Tab-agnostic. Six EmailAgent
+ * give_up reasons (OTP manual handover) + `password_required` from the apply
+ * agent's request_user_login (the user types their password themselves -
+ * Jorb never handles passwords). Renderer holds the matching speech strings;
+ * server emits only the reason code. */
 export type PausedForUserReason =
   | 'no_inbox_connected'
   | 'user_not_logged_in'
   | 'no_matching_email'
   | 'multiple_candidates_ambiguous'
   | 'email_unreadable'
-  | 'session_expired_mid_read';
+  | 'session_expired_mid_read'
+  | 'password_required';
 
-export interface AgentJobEvent {
-  type: 'base_selected' | 'edit' | 'reasoning' | 'memory';
-  base_name?: string;
-  reasoning?: string;
-  text?: string;
-  [key: string]: any;
-}
+/** The OTP-handover subset of PausedForUserReason - the reasons that mean
+ * "the user needs to find a verification code in their inbox". The inbox
+ * tab's cross-actor speech keys on these ONLY: a password pause must not
+ * make the inbox tab say "find the verification code". */
+export const OTP_PAUSED_REASONS: ReadonlySet<PausedForUserReason> = new Set([
+  'no_inbox_connected',
+  'user_not_logged_in',
+  'no_matching_email',
+  'multiple_candidates_ambiguous',
+  'email_unreadable',
+  'session_expired_mid_read',
+]);
 
 /** One row in `user_inboxes`. Fetched via `list_user_inboxes` WS request
  * and maintained locally via `user_inbox_added` / `user_inbox_removed`
@@ -61,6 +73,16 @@ export interface UserInbox {
   provider: 'gmail';
   label: string | null;
   created_at: string;
+}
+
+/** viewA navigation state for the action bar's browser-chrome strip.
+ * Main owns the truth (webContents.navigationHistory); pushed on every
+ * did-navigate / did-navigate-in-page, pulled once on bar mount. */
+export interface SessionNavState {
+  sessionId: string;
+  url: string;
+  canGoBack: boolean;
+  canGoForward: boolean;
 }
 
 /** Derived display status for session rows. */
@@ -142,12 +164,16 @@ declare global {
         setBarHeight: (height: number) => Promise<void>;
       };
       session: {
-        show: (sessionId: string) => Promise<boolean>;
+        show: (sessionId: string) => Promise<'shown' | 'loading' | 'none'>;
         showTailor: (sessionId: string) => Promise<boolean>;
-        showOrNavigateInbox: (sessionId: string, url?: string) => Promise<void>;
+        showOrNavigateInbox: (sessionId: string) => Promise<void>;
+        preloadInbox: (sessionId: string) => Promise<void>;
         destroy: (sessionId: string) => Promise<void>;
         status: () => Promise<{ count: number; atCapacity: boolean }>;
-        onActiveChanged: (callback: (sessionId: string) => void) => () => void;
+        onActiveChanged: (callback: (sessionId: string, loading: boolean) => void) => () => void;
+        getNavState: (sessionId: string) => Promise<SessionNavState>;
+        historyGo: (sessionId: string, delta: number) => Promise<void>;
+        onNavState: (callback: (state: SessionNavState) => void) => () => void;
       };
       rpc: {
         request: (msg: unknown) => Promise<void>;
@@ -162,7 +188,7 @@ declare global {
         importCookies: () => Promise<{ ok: boolean; error?: string; browserName?: string; profile?: string; imported?: number; total?: number; domains?: number }>;
       };
     };
-    __FINBRO_ENV__?: { isElectron: boolean };
+    __ELECTRON_ENV__?: { isElectron: boolean };
   }
 }
 

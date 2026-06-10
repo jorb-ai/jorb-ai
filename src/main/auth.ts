@@ -51,7 +51,3 @@ function notifyRenderer(state: AuthState): void {
 export function getCurrentToken(): string | null {
   return currentToken;
 }
-
-export function isAuthenticated(): boolean {
-  return currentToken !== null;
-}

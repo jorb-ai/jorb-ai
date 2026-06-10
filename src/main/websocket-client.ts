@@ -7,6 +7,7 @@ import {
   getSessionFrames,
   showTailorView,
   showPortalView,
+  isInboxSessionId,
 } from './panels';
 import * as FileSync from './file-sync';
 
@@ -55,7 +56,7 @@ export function sendWsMessage(msg: unknown): void {
   // Log the high-signal message types at info so they appear in the
   // shipped log file. CDP responses and other high-volume types stay
   // silent here; their telemetry happens elsewhere.
-  if (t === 'subscribe' || t === 'unsubscribe' || t === 'list_browser_jobs' || t === 'watch_agent_job') {
+  if (t === 'subscribe' || t === 'unsubscribe' || t === 'list_browser_jobs') {
     log.info(`[WebSocket] sendWsMessage(${t}) — ${isOpen ? 'sent' : 'queued'}`);
   }
 
@@ -81,7 +82,7 @@ export function connectWebSocket(token: string): void {
   // open WS is still valid even if the token has since refreshed. Tearing it
   // down on every auth state change would churn the connection.
   //
-  // CONNECTING: the webapp's `electron-auth-bridge` can fire `sendAuthToken`
+  // CONNECTING: the webapp's `electron-bridge` can fire `sendAuthToken`
   // twice within a few ms during initial hydration (e.g. INITIAL_SESSION
   // followed immediately by a visibility-driven refresh). The first call
   // opens WS1; the second arrives while WS1 is still in CONNECTING state.
@@ -182,8 +183,8 @@ export function connectWebSocket(token: string): void {
 
 function handleServerMessage(message: any): void {
   // Fan out to RPC listeners BEFORE the existing dispatch. Listeners only
-  // care about data-plane messages (browser_jobs_list, agent_job,
-  // *_inserted / *_updated, subscribed, error-correlated-to-an-id); the
+  // care about data-plane messages (browser_jobs_list, *_inserted /
+  // *_updated, subscribed, error-correlated-to-an-id); the
   // main-process dispatch below handles CDP/navigate/file-sync/panel-
   // switch. Each side ignores the messages it does not own.
   for (const listener of serverMessageListeners) {
@@ -274,7 +275,16 @@ async function executeNavigate(id: string, params: any): Promise<void> {
     // away from wherever they are. The sidebar's WS pubsub push shows the
     // new row with a purple gleam; the user clicks in when they want to
     // watch. See `panels.ts:navigateSession` autoShow doc.
-    const tabId = await navigateSession(session_id, url, { autoShow: false });
+    //
+    // Inbox sessions preserve a same-origin view: the eager preload usually
+    // has Gmail warm already, and re-walking its redirect chain here cost the
+    // EmailAgent its first OTP attempt (ERR_ABORTED race, run 46c73106). The
+    // EmailAgent lands the view on the plain inbox via CDP before every read,
+    // so skipping the reload is safe.
+    const tabId = await navigateSession(session_id, url, {
+      autoShow: false,
+      preserveIfSameOrigin: isInboxSessionId(session_id),
+    });
     log.info('[WebSocket] Navigated:', session_id.slice(0, 8), '→', url, '— tab_id:', tabId, '(background)');
     sendResult(id, { tab_id: tabId });
   } catch (error) {
@@ -437,8 +447,4 @@ export function disconnectWebSocket(): void {
   hasSubscribed = false;
   ws.close(NORMAL_CLOSURE, 'User logged out');
   ws = null;
-}
-
-export function isWebSocketConnected(): boolean {
-  return ws !== null && ws.readyState === WebSocket.OPEN;
 }

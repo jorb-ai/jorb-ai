@@ -15,5 +15,3 @@ export const PROD_DEFAULT_CONFIG: AppConfig = {
   automationServerUrl: 'wss://api.jorb.ai/browser/ws',
   webAppUrl: 'https://jorb.ai',
 };
-
-export const DEFAULT_CONFIG = DEV_DEFAULT_CONFIG;

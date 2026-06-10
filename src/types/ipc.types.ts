@@ -14,19 +14,30 @@ export enum IpcChannel {
   SESSION_SHOW_TAILOR = 'session:show-tailor',
   SESSION_DESTROY = 'session:destroy',
   SESSION_STATUS = 'session:status',
-  // Inbox-access: open / navigate the per-inbox BrowserView. Distinct
-  // from PANEL_NAVIGATE because the inbox view ALWAYS navigates on this
-  // call even when the session already exists at the same origin
-  // (Gmail-search URL fragment changes between calls; the generic
-  // showOrNavigateSession's origin-match short-circuit would swallow
-  // the pre-search affordance). See workstreams/browser/inbox-access.md.
+  // Inbox-access: show the per-inbox BrowserView, creating + loading it
+  // at the Gmail root if it does not exist yet. Distinct from
+  // PANEL_NAVIGATE: the renderer passes no URL - main owns the Gmail root
+  // and the per-inbox partition. See workstreams/browser/inbox-access.md.
   SESSION_SHOW_OR_NAVIGATE_INBOX = 'session:show-or-navigate-inbox',
+  // Inbox-access: background-preload an inbox view at Gmail root. Fired by
+  // the renderer for every row when its inbox list lands, so clicks and OTP
+  // retrievals find a warm view (workstreams/browser/specs.md "eager
+  // preload"). Never changes z-order.
+  SESSION_PRELOAD_INBOX = 'session:preload-inbox',
   // One-way main → renderer push: fired whenever panels.ts:showSession
   // brings a session to the front. Lets the renderer mirror activeJobId
   // when the worker auto-jumps via the `navigate` WS command. Without
   // this, the BrowserView swaps to the front but the sidebar row never
   // gets the active pill until the user clicks.
   SESSION_ACTIVE_CHANGED = 'session:active-changed',
+  // Browser-chrome nav strip (agent sessions): main → renderer push on every
+  // viewA navigation ({sessionId, url, canGoBack, canGoForward}), a pull for
+  // the initial state when the bar mounts mid-session, and the back/forward
+  // history command. Read-only URL display; the user CAN press the arrows
+  // (browser parity - viewA is interactive during runs anyway).
+  SESSION_NAV_STATE = 'session:nav-state',
+  SESSION_NAV_STATE_GET = 'session:nav-state-get',
+  SESSION_HISTORY_GO = 'session:history-go',
 
   // Middle-panel navigation (system tabs route via showOrNavigateSession)
   PANEL_NAVIGATE = 'panel:navigate',
@@ -51,6 +62,11 @@ export enum IpcChannel {
   RPC_SUBSCRIBE = 'rpc:subscribe',
   RPC_UNSUBSCRIBE = 'rpc:unsubscribe',
   RPC_EVENT = 'rpc:event',
+
+  // Shell capabilities exposed to web-app BrowserViews (preload-webapp.ts).
+  // The shell denies window.open globally, so web-app opens external URLs
+  // in the OS default browser through this channel. contracts.md C16.
+  SHELL_OPEN_EXTERNAL = 'shell:open-external',
 
   // Dev-only tooling. Grafts the user's real Chrome cookies into persist:portal
   // so a freshly-cleared dev session lands logged-in on job portals (+ Google

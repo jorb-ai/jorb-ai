@@ -10,8 +10,7 @@ let mainWindow: BrowserWindow | null = null;
 // Sidebar zone is 190px: a 180px floating glass card with a tight gutter
 // (6px L/T/B + 4px R). The middle panel butts against the card's right
 // edge with just enough breathing room for the card's drop shadow.
-// Action bar is 0 hidden, 96 for the JorbHeader, or 122 for
-// paused_for_user.
+// Action bar is 0 hidden, 84 header-only (inbox tabs), or 112 (header + nav strip, agent sessions).
 // Renderer pushes height changes via `panel:set-bar-height` so
 // BrowserView bounds re-flow. Must stay in sync with
 // `--sidebar-zone-width` in renderer/styles.css.
@@ -98,9 +97,9 @@ function computeBrowserViewBounds(windowWidth: number, windowHeight: number) {
 
 /**
  * Called by ipc when the renderer's action bar changes height:
- *   0   = hidden (idle / __webapp__)
- *   96  = JorbHeader (agent-session state or inbox tab)
- *   122 = paused_for_user variant
+ *   0   = hidden (idle / __webapp__ / stopped session)
+ *   84  = JorbHeader row only (inbox tabs)
+ *   112 = JorbHeader + browser-chrome nav strip (agent sessions)
  * We store the new value and re-flow all BrowserViews so the browser
  * area lines up flush with whatever chrome the renderer is drawing.
  */
@@ -111,8 +110,4 @@ export function setActionBarHeight(height: number): void {
   if (!mainWindow) return;
   const [w, h] = mainWindow.getContentSize();
   layoutBrowserViews(computeBrowserViewBounds(w, h));
-}
-
-export function getMainWindow(): BrowserWindow | null {
-  return mainWindow;
 }

@@ -13,9 +13,13 @@ const IpcChannel = {
   SESSION_SHOW: 'session:show',
   SESSION_SHOW_TAILOR: 'session:show-tailor',
   SESSION_SHOW_OR_NAVIGATE_INBOX: 'session:show-or-navigate-inbox',
+  SESSION_PRELOAD_INBOX: 'session:preload-inbox',
   SESSION_DESTROY: 'session:destroy',
   SESSION_STATUS: 'session:status',
   SESSION_ACTIVE_CHANGED: 'session:active-changed',
+  SESSION_NAV_STATE: 'session:nav-state',
+  SESSION_NAV_STATE_GET: 'session:nav-state-get',
+  SESSION_HISTORY_GO: 'session:history-go',
   RPC_REQUEST: 'rpc:request',
   RPC_SUBSCRIBE: 'rpc:subscribe',
   RPC_UNSUBSCRIBE: 'rpc:unsubscribe',
@@ -59,8 +63,7 @@ const finbroApi = {
     navigate: async (url: string, sessionId?: string) => {
       return ipcRenderer.invoke(IpcChannel.PANEL_NAVIGATE, { url, sessionId });
     },
-    // Renderer notifies main of the current action-bar height (0, 96, or 122
-    // — 122 is the paused_for_user variant) so BrowserView bounds stay
+    // Renderer notifies main of the current action-bar height (0 / 84 / 112) so BrowserView bounds stay
     // aligned with the HTML chrome.
     setBarHeight: async (height: number) => {
       return ipcRenderer.invoke(IpcChannel.PANEL_SET_BAR_HEIGHT, { height });
@@ -74,12 +77,15 @@ const finbroApi = {
     showTailor: async (sessionId: string) => {
       return ipcRenderer.invoke(IpcChannel.SESSION_SHOW_TAILOR, { sessionId });
     },
-    // Inbox-access: open / re-search a per-inbox BrowserView. Omitting
-    // `url` defaults to the Gmail root. Used by the sidebar InboxRow
-    // (no url) and the JorbHeader pre-search affordance (url = the
-    // EmailAgent's exact search URL, lands the user pre-searched).
-    showOrNavigateInbox: async (sessionId: string, url?: string) => {
-      return ipcRenderer.invoke(IpcChannel.SESSION_SHOW_OR_NAVIGATE_INBOX, { sessionId, url });
+    // Inbox-access: show the per-inbox BrowserView, creating it at the
+    // Gmail root if it does not exist yet. Used by the sidebar InboxRow.
+    showOrNavigateInbox: async (sessionId: string) => {
+      return ipcRenderer.invoke(IpcChannel.SESSION_SHOW_OR_NAVIGATE_INBOX, { sessionId });
+    },
+    // Background-preload an inbox view at Gmail root (fire-and-forget;
+    // never changes z-order). Fired per row when the inbox list lands.
+    preloadInbox: async (sessionId: string) => {
+      return ipcRenderer.invoke(IpcChannel.SESSION_PRELOAD_INBOX, { sessionId });
     },
     destroy: async (sessionId: string) => {
       return ipcRenderer.invoke(IpcChannel.SESSION_DESTROY, { sessionId });
@@ -87,13 +93,28 @@ const finbroApi = {
     status: async () => {
       return ipcRenderer.invoke(IpcChannel.SESSION_STATUS);
     },
-    // One-way listener — fires whenever main brings a session to the
-    // front (user click OR worker auto-jump). Renderer mirrors into
-    // activeJobId so the sidebar pill follows what's actually on top.
-    onActiveChanged: (callback: (sessionId: string) => void): (() => void) => {
-      const handler = (_e: IpcRendererEvent, payload: { sessionId: string }) => callback(payload?.sessionId);
+    // One-way listener — fires whenever main selects a session (user click
+    // OR worker auto-jump). Renderer mirrors into activeJobId so the
+    // sidebar pill follows what's actually on top; `loading: true` means
+    // the tab hasn't painted yet (all views detached) and the renderer
+    // shows the loading skeleton until the `loading: false` push lands.
+    onActiveChanged: (callback: (sessionId: string, loading: boolean) => void): (() => void) => {
+      const handler = (_e: IpcRendererEvent, payload: { sessionId: string; loading?: boolean }) =>
+        callback(payload?.sessionId, !!payload?.loading);
       ipcRenderer.on(IpcChannel.SESSION_ACTIVE_CHANGED, handler);
       return () => ipcRenderer.removeListener(IpcChannel.SESSION_ACTIVE_CHANGED, handler);
+    },
+    // Browser-chrome nav strip: initial pull, live pushes, back/forward.
+    getNavState: async (sessionId: string) => {
+      return ipcRenderer.invoke(IpcChannel.SESSION_NAV_STATE_GET, { sessionId });
+    },
+    historyGo: async (sessionId: string, delta: number) => {
+      return ipcRenderer.invoke(IpcChannel.SESSION_HISTORY_GO, { sessionId, delta });
+    },
+    onNavState: (callback: (state: { sessionId: string; url: string; canGoBack: boolean; canGoForward: boolean }) => void): (() => void) => {
+      const handler = (_e: IpcRendererEvent, state: { sessionId: string; url: string; canGoBack: boolean; canGoForward: boolean }) => callback(state);
+      ipcRenderer.on(IpcChannel.SESSION_NAV_STATE, handler);
+      return () => ipcRenderer.removeListener(IpcChannel.SESSION_NAV_STATE, handler);
     },
   },
 

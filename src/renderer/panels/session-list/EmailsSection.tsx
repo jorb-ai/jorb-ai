@@ -17,7 +17,7 @@
  * popover closes, the new inbox tab is opened so the user signs in to
  * Gmail. On error response, the optimistic row is rolled back.
  */
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { useUserInboxes } from '../../hooks/useUserInboxes';
 import { InboxRow, inboxSessionId } from '../../components/InboxRow';
 import { InboxProviderPopover } from '../../components/InboxProviderPopover';
@@ -86,13 +86,6 @@ export const EmailsSection: React.FC<EmailsSectionProps> = ({
   const showEmpty = !loading && inboxes.length === 0;
   const showOccupied = inboxes.length > 0;
 
-  // Anchor the popover to its own dedicated trigger when re-opening
-  // from the `+` icon after the user already has inboxes.
-  const plusBtnRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    // No-op: anchor is captured at click time via getBoundingClientRect.
-  }, []);
-
   return (
     <>
       <div className="sidebar__section">
@@ -100,7 +93,6 @@ export const EmailsSection: React.FC<EmailsSectionProps> = ({
           <span>Emails</span>
           {showOccupied && (
             <button
-              ref={plusBtnRef}
               className="sidebar__header-action"
               onClick={openPopover}
               aria-label="Add inbox"

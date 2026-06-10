@@ -1,7 +1,7 @@
 /**
  * useInboxStatus - Map<inbox_id, reading>. Subscribed to
  * `inbox_status_changed` pushes from the server. The EmailAgent fires
- * `reading: true` immediately before `_run_inner_agent` and `reading:
+ * `reading: true` immediately before `_run_inner_with_status` and `reading:
  * false` in its finally; the renderer uses this to render the
  * "Reading your inbox right now for a verification code..." JorbHeader
  * speech on the inbox tab (C14, priority-ordered three-way derive).
@@ -48,10 +48,4 @@ export function useInboxStatus(): Map<string, boolean> {
     };
   }, []);
   return snapshot;
-}
-
-/** Convenience: is THIS inbox currently being read? */
-export function useIsInboxReading(inboxId: string): boolean {
-  const map = useInboxStatus();
-  return map.get(inboxId) === true;
 }

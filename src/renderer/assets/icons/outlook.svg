@@ -1,9 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" fill="none">
-  <!-- Envelope (behind) -->
-  <path fill="#1f6fc4" d="M20 13.5h21.5A1.5 1.5 0 0 1 43 15v18a1.5 1.5 0 0 1-1.5 1.5H20v-21Z"/>
-  <rect x="27" y="18.5" width="13" height="11" fill="#fff"/>
-  <path fill="#1f6fc4" d="M27 18.5h13l-6.5 4.6Z"/>
-  <!-- Outlook "O" panel (front, overlapping the envelope's left edge) -->
-  <rect x="4" y="9" width="22" height="30" rx="3" fill="#0f4c98"/>
-  <path fill="#fff" fill-rule="evenodd" d="M15 16.4a7.1 7.1 0 1 1 0 14.2 7.1 7.1 0 0 1 0-14.2Zm0 4.2a2.9 2.9 0 1 0 0 5.8 2.9 2.9 0 0 0 0-5.8Z"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <!-- Cute house-style mark, not the official Outlook "O" panel: plump
+       rounded envelope in the provider's blue family + a little unread-dot
+       charm. Sibling of gmail.svg (same geometry, different colorway) -
+       keep the pair in lockstep. Reads at 14px (sidebar row) and 24px
+       (provider tile). -->
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#69B7F7"/>
+      <stop offset="1" stop-color="#1565C0"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="11" width="40" height="30" rx="10" fill="url(#body)"/>
+  <path d="M11 18.5 L24 28 L37 18.5" fill="none" stroke="#FFFFFF" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="39" cy="13" r="5" fill="#80DEEA" stroke="#FFFFFF" stroke-width="2.4"/>
 </svg>

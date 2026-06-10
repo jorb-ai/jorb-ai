@@ -13,6 +13,7 @@ import {
   addUserInbox,
   removeUserInbox,
 } from '../lib/rpc';
+import { inboxSessionId } from '../components/InboxRow';
 import type { UserInbox } from '../types';
 
 export interface UseUserInboxes {
@@ -38,6 +39,18 @@ export function useUserInboxes(enabled: boolean): UseUserInboxes {
       if (!mounted) return;
       setInboxes(rows);
       setLoading(false);
+      // Eager preload: warm every inbox BrowserView at Gmail root in the
+      // background, so the first sidebar click and the first OTP retrieval
+      // land on a painted inbox instead of paying the cold redirect-chain
+      // load at the moment of need. Fire-and-forget; main logs outcomes.
+      // The add() path needs no preload - its caller opens the tab
+      // immediately for Gmail sign-in.
+      // .catch: the main-side handler never rejects (preloadInbox swallows
+      // internally), so this only guards an IPC transport blip from surfacing
+      // as an unhandled rejection in the renderer console.
+      rows.forEach((r) => {
+        void window.Finbro.session.preloadInbox(inboxSessionId(r.id)).catch(() => {});
+      });
     });
     return () => {
       mounted = false;
@@ -70,7 +83,6 @@ export function useUserInboxes(enabled: boolean): UseUserInboxes {
   const remove = useCallback(async (inboxId: string): Promise<void> => {
     // Optimistic local remove. If the server rejects (rare - ownership
     // would be the only failure mode), we reseed from a re-list.
-    const snapshot = inboxes;
     setInboxes((prev) => prev.filter((i) => i.id !== inboxId));
     try {
       await removeUserInbox(inboxId);
@@ -78,10 +90,8 @@ export function useUserInboxes(enabled: boolean): UseUserInboxes {
       console.error('[useUserInboxes] remove failed, re-listing:', err);
       const fresh = await listUserInboxes();
       setInboxes(fresh);
-      // suppress unused-var warning
-      void snapshot;
     }
-  }, [inboxes]);
+  }, []);
 
   return useMemo(() => ({ inboxes, loading, add, remove }), [inboxes, loading, add, remove]);
 }

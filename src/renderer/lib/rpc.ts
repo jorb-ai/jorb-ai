@@ -22,8 +22,6 @@ const pending = new Map<string, PendingEntry>();
 
 const jobInsertCallbacks = new Set<(row: BrowserJobRow) => void>();
 const jobUpdateCallbacks = new Set<(row: BrowserJobRow) => void>();
-// Keyed by agent_job_id → set of per-component update callbacks
-const agentJobCallbacks = new Map<string, Set<(row: any) => void>>();
 
 // Inbox-access pushes (C14). One set of (inbox_id, reading) callbacks
 // fanned by the useInboxStatus hook into its Map<inbox_id, reading>.
@@ -63,13 +61,6 @@ window.Finbro.rpc?.onEvent((event: any) => {
       );
       jobUpdateCallbacks.forEach((cb) => cb(event.row));
       break;
-    case 'agent_job_updated': {
-      const rowId = event.row?.id;
-      if (rowId) {
-        agentJobCallbacks.get(rowId)?.forEach((cb) => cb(event.row));
-      }
-      break;
-    }
     case 'inbox_status_changed': {
       const inboxId: string | undefined = event.inbox_id;
       const reading: boolean = Boolean(event.reading);
@@ -144,47 +135,6 @@ export function subscribeBrowserJobs(
     console.log(
       `[rpc] subscribeBrowserJobs unsubscribed - insertCbs: ${jobInsertCallbacks.size}, updateCbs: ${jobUpdateCallbacks.size}`,
     );
-  };
-}
-
-export function watchAgentJob(
-  agentJobId: string,
-  onUpdate: (row: any) => void,
-): () => void {
-  let callbacks = agentJobCallbacks.get(agentJobId);
-  if (!callbacks) {
-    callbacks = new Set();
-    agentJobCallbacks.set(agentJobId, callbacks);
-  }
-  callbacks.add(onUpdate);
-
-  sendRequest<{ row: any }>({
-    type: 'watch_agent_job',
-    agent_job_id: agentJobId,
-  })
-    .then((response) => {
-      if (response.row && callbacks!.has(onUpdate)) {
-        onUpdate(response.row);
-      }
-    })
-    .catch((err: Error) => {
-      console.warn(`[rpc] watchAgentJob failed for ${agentJobId}: ${err.message}`);
-      const set = agentJobCallbacks.get(agentJobId);
-      set?.delete(onUpdate);
-      if (set && set.size === 0) agentJobCallbacks.delete(agentJobId);
-    });
-
-  return () => {
-    const set = agentJobCallbacks.get(agentJobId);
-    if (set) {
-      set.delete(onUpdate);
-      if (set.size === 0) agentJobCallbacks.delete(agentJobId);
-    }
-    window.Finbro.rpc
-      .request({ type: 'unwatch_agent_job', agent_job_id: agentJobId })
-      .catch(() => {
-        /* main process may be shutting down - ignore. */
-      });
   };
 }
 

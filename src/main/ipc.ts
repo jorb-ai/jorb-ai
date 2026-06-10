@@ -1,4 +1,4 @@
-import { ipcMain, IpcMainInvokeEvent } from 'electron';
+import { ipcMain, shell, IpcMainInvokeEvent } from 'electron';
 import log from './logger';
 import { IpcChannel } from '../types/ipc.types';
 import { getConfig, getConfigValue, setConfig } from './config';
@@ -12,13 +12,19 @@ import {
   isAtCapacity,
   showOrNavigateSession,
   showOrNavigateInbox,
+  preloadInbox,
   hasTailorView,
+  getNavState,
+  historyGo,
 } from './panels';
 import { setActionBarHeight } from './windows';
 import { detectChromeProfiles } from './chrome-import/profiles';
 import { importChromeProfileCookies } from './chrome-import/cookies';
 
-const AUTH_TOKEN_ALLOWED_ORIGINS = new Set([
+// Origins allowed to invoke the web-app-only channels (auth token push,
+// shell capabilities). Both are exposed solely by preload-webapp.ts; this
+// sender check is defense-in-depth against a compromised/other view.
+const WEBAPP_ALLOWED_ORIGINS = new Set([
   'http://localhost:3000',
   'http://127.0.0.1:3000',
   'https://jorb.ai',
@@ -44,10 +50,10 @@ function configuredWebAppOrigin(): string | null {
   return null;
 }
 
-function isAllowedAuthSender(rawUrl: string): boolean {
+function isAllowedWebAppSender(rawUrl: string): boolean {
   try {
     const url = new URL(rawUrl);
-    return AUTH_TOKEN_ALLOWED_ORIGINS.has(url.origin) || url.origin === configuredWebAppOrigin();
+    return WEBAPP_ALLOWED_ORIGINS.has(url.origin) || url.origin === configuredWebAppOrigin();
   } catch {
     return false;
   }
@@ -81,12 +87,35 @@ export function registerIpcHandlers(): void {
     const sender = event.sender;
     const senderUrl = sender.getURL() || '<empty>';
     const senderType = sender.getType();
-    if (!isAllowedAuthSender(senderUrl)) {
+    if (!isAllowedWebAppSender(senderUrl)) {
       log.warn(`[IPC] AUTH_SEND_TOKEN rejected: sender=${senderType} @ ${senderUrl}`);
       return;
     }
     log.info(`[IPC] AUTH_SEND_TOKEN accepted: sender=${senderType} @ ${senderUrl}`);
     handleAuthToken(args.token);
+  });
+
+  // Open a URL in the OS default browser. The shell denies window.open
+  // globally (main.ts), so this is web-app's only way out - used for
+  // "Open in browser" affordances on job links. Web-app senders only;
+  // http/https only (never file:// or app protocols). contracts.md C16.
+  ipcMain.handle(IpcChannel.SHELL_OPEN_EXTERNAL, async (event: IpcMainInvokeEvent, args: { url: string }) => {
+    const senderUrl = event.sender.getURL() || '<empty>';
+    if (!isAllowedWebAppSender(senderUrl)) {
+      log.warn(`[IPC] SHELL_OPEN_EXTERNAL rejected: sender @ ${senderUrl}`);
+      return;
+    }
+    try {
+      const url = new URL(args.url);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+        log.warn(`[IPC] SHELL_OPEN_EXTERNAL rejected: scheme ${url.protocol}`);
+        return;
+      }
+      log.info(`[IPC] SHELL_OPEN_EXTERNAL – ${url.origin}${url.pathname}`);
+      await shell.openExternal(url.toString());
+    } catch {
+      log.warn(`[IPC] SHELL_OPEN_EXTERNAL rejected: unparseable url`);
+    }
   });
 
   ipcMain.handle(IpcChannel.BROWSER_STOP, async (_event: IpcMainInvokeEvent, args: { jobId: string }) => {
@@ -104,14 +133,26 @@ export function registerIpcHandlers(): void {
     await closeBrowserJob(args.jobId);
   });
 
-  // Session lifecycle
+  // Session lifecycle. Returns 'shown' | 'loading' | 'none' — on 'none'
+  // the renderer navigates the session to the job's posting URL (the
+  // skeleton is already up either way; see panels.ts showSession).
   ipcMain.handle(IpcChannel.SESSION_SHOW, async (_event: IpcMainInvokeEvent, args: { sessionId: string }) => {
     return showSession(args.sessionId);
   });
 
+  // Browser-chrome nav strip: initial-state pull + back/forward command.
+  // Live updates ride the SESSION_NAV_STATE push from panels.ts.
+  ipcMain.handle(IpcChannel.SESSION_NAV_STATE_GET, async (_event: IpcMainInvokeEvent, args: { sessionId: string }) => {
+    return getNavState(args.sessionId);
+  });
+
+  ipcMain.handle(IpcChannel.SESSION_HISTORY_GO, async (_event: IpcMainInvokeEvent, args: { sessionId: string; delta: number }) => {
+    historyGo(args.sessionId, args.delta);
+  });
+
   ipcMain.handle(IpcChannel.SESSION_SHOW_TAILOR, async (_event: IpcMainInvokeEvent, args: { sessionId: string }) => {
     if (hasTailorView(args.sessionId)) {
-      return showSession(args.sessionId);
+      return showSession(args.sessionId) === 'shown';
     }
     return false;
   });
@@ -120,21 +161,22 @@ export function registerIpcHandlers(): void {
     destroySession(args.sessionId);
   });
 
-  // Inbox-access: open / re-search a per-inbox BrowserView. Used by:
-  //   - sidebar InboxRow click (no url -> show existing tab; create at
-  //     Gmail root only if missing)
-  //   - JorbHeader pre-search affordance (url = the EmailAgent's exact
-  //     search URL, lands the user pre-searched for the right sender).
-  // The explicit-url path navigates even if the session exists, side-stepping
-  // the origin-match short-circuit that would swallow Gmail-search fragment
-  // changes.
+  // Inbox-access: open a per-inbox BrowserView. Sidebar InboxRow click:
+  // show the existing tab; create + load it at the Gmail root if missing.
   ipcMain.handle(
     IpcChannel.SESSION_SHOW_OR_NAVIGATE_INBOX,
-    async (
-      _event: IpcMainInvokeEvent,
-      args: { sessionId: string; url?: string },
-    ) => {
-      await showOrNavigateInbox(args.sessionId, args.url);
+    async (_event: IpcMainInvokeEvent, args: { sessionId: string }) => {
+      await showOrNavigateInbox(args.sessionId);
+    },
+  );
+
+  // Inbox-access: background-preload an inbox view (eager preload — the
+  // renderer fires one per row when its inbox list lands). Fire-and-forget
+  // semantics for the caller; panels.ts logs the outcome.
+  ipcMain.handle(
+    IpcChannel.SESSION_PRELOAD_INBOX,
+    async (_event: IpcMainInvokeEvent, args: { sessionId: string }) => {
+      await preloadInbox(args.sessionId);
     },
   );
 

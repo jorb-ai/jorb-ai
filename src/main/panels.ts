@@ -18,12 +18,13 @@ const PORTAL_PARTITION = 'persist:portal';
 const INBOX_SESSION_PREFIX = '__inbox_';
 const INBOX_SESSION_SUFFIX = '__';
 const INBOX_PARTITION_PREFIX = 'persist:inbox_';
+const GMAIL_ROOT_URL = 'https://mail.google.com/mail/u/0/';
 
 function isSystemSessionId(id: string): boolean {
   return id.startsWith('__');
 }
 
-function isInboxSessionId(id: string): boolean {
+export function isInboxSessionId(id: string): boolean {
   // `__inbox_<8-char-id>__` shape - see workstreams/browser/contracts.md C12.
   // Both sides MUST compute the partition / session id identically; the
   // server uses `inbox_session_id(uuid)` in email_agent.py.
@@ -74,6 +75,12 @@ interface Session {
   viewA: BrowserView;       // portal — always exists
   viewB: BrowserView | null; // tailor — created on demand
   tabId: number | null;      // webContents.id of viewA (set after first navigate)
+  // First top-level load of viewA completed (or genuinely failed). Until
+  // then the view has nothing painted, so showing it would be a blank
+  // white flash — showSession keeps it detached and the renderer's
+  // skeleton shows instead. ERR_ABORTED (a superseded load in a redirect
+  // chain) does NOT count as completion; the chain's final load does.
+  loaded: boolean;
   // Cross-origin (OOPIF) child frames of viewA, keyed by their CDP session id.
   // Populated by flatten auto-attach (see wireFrameTracking). web-api captures
   // + actuates inside these via the cdp/cdp_capture_frames frame_session_id
@@ -86,11 +93,19 @@ let parentWindow: BrowserWindow | null = null;
 let currentBounds: PanelBounds = { x: 0, y: 0, width: 800, height: 600 };
 let activeSessionId: string | null = null;
 
-// When the selected session has no BrowserView — a queued job the worker
-// hasn't navigated, or a job from an earlier app run — every BrowserView
-// is detached so the renderer's middle panel (the SessionPlaceholder
-// card) shows through. `reorderViews` short-circuits in this mode.
-let placeholderMode = false;
+// When the selected tab can't paint yet — no BrowserView at all (the
+// renderer reacts by navigating it to the job's posting URL), or a view
+// whose first load is still in flight — every BrowserView is detached so
+// the renderer's middle-panel loading skeleton shows through.
+// `reorderViews` short-circuits in this mode.
+let skeletonMode = false;
+
+// The session the user last asked to see but whose view couldn't paint at
+// the time. When its first load completes (markLoaded in createSession) it
+// is shown automatically — unless the user has since switched elsewhere,
+// which clears this. Also guards navigateSession's autoShow from stealing
+// focus after the user moved on mid-load.
+let pendingShowSessionId: string | null = null;
 
 const sessions = new Map<string, Session>();
 
@@ -111,7 +126,7 @@ function makeView(preloadName: string, partition: string = PORTAL_PARTITION): Br
   view.webContents.setBackgroundThrottling(false);
 
   // Auth is push-only: web-app BrowserViews use preload-webapp.ts to expose
-  // window.finbro.sendAuthToken on SIGNED_IN / TOKEN_REFRESHED /
+  // window.electron.sendAuthToken on SIGNED_IN / TOKEN_REFRESHED /
   // visibilitychange-driven refreshes. Portal and inbox views use the neutral
   // preload-webview.ts and cannot push tokens.
 
@@ -139,9 +154,9 @@ function reorderViews(): void {
     if (session.viewB) parentWindow.removeBrowserView(session.viewB);
   }
 
-  // Placeholder mode: leave every view detached so the renderer's middle
-  // panel (the SessionPlaceholder card) is visible underneath.
-  if (placeholderMode) return;
+  // Skeleton mode: leave every view detached so the renderer's middle
+  // panel (the loading skeleton) is visible underneath.
+  if (skeletonMode) return;
 
   const active = activeSessionId ? sessions.get(activeSessionId) : null;
 
@@ -173,6 +188,56 @@ function teardownView(view: BrowserView): void {
   }
   parentWindow?.removeBrowserView(view);
   view.webContents.close();
+}
+
+// ── Nav state (browser-chrome strip) ─────────────────────────────────
+// The action bar's nav strip shows viewA's URL + live back/forward for the
+// active agent session. Main owns the truth (webContents.navigationHistory);
+// the renderer gets a push on every navigation and pulls once on mount.
+
+export interface SessionNavState {
+  sessionId: string;
+  url: string;
+  canGoBack: boolean;
+  canGoForward: boolean;
+}
+
+function navStateFor(sessionId: string, view: BrowserView): SessionNavState {
+  const wc = view.webContents;
+  const history = wc.navigationHistory;
+  return {
+    sessionId,
+    url: wc.getURL() || '',
+    canGoBack: history.canGoBack(),
+    canGoForward: history.canGoForward(),
+  };
+}
+
+function wireNavState(sessionId: string, view: BrowserView): void {
+  const send = () => {
+    if (!parentWindow || parentWindow.isDestroyed() || parentWindow.webContents.isDestroyed()) return;
+    try {
+      parentWindow.webContents.send(IpcChannel.SESSION_NAV_STATE, navStateFor(sessionId, view));
+    } catch (e) {
+      log.warn(`[Panels] nav-state send failed (${sessionId.slice(0, 8)}): ${(e as Error).message}`);
+    }
+  };
+  view.webContents.on('did-navigate', send);
+  view.webContents.on('did-navigate-in-page', send);
+}
+
+export function getNavState(sessionId: string): SessionNavState {
+  const session = sessions.get(sessionId);
+  if (!session) return { sessionId, url: '', canGoBack: false, canGoForward: false };
+  return navStateFor(sessionId, session.viewA);
+}
+
+export function historyGo(sessionId: string, delta: number): void {
+  const session = sessions.get(sessionId);
+  if (!session) return;
+  const history = session.viewA.webContents.navigationHistory;
+  if (delta < 0 && history.canGoBack()) history.goBack();
+  else if (delta > 0 && history.canGoForward()) history.goForward();
 }
 
 // Track cross-origin (OOPIF) child frames of a session's viewA. Cross-origin
@@ -236,6 +301,7 @@ export function createSession(sessionId: string): boolean {
 
   const partition = partitionForSession(sessionId);
   const viewA = makeView(preloadForSession(sessionId), partition);
+  wireNavState(sessionId, viewA);
   // Do NOT attach the view here. reorderViews() is the single authority on
   // which views are attached and in what z-order (derived from
   // activeSessionId). Attaching on create stacked a freshly-created view on top
@@ -243,7 +309,23 @@ export function createSession(sessionId: string): boolean {
   // portal popped over __webapp__ with no action bar (no active-session sync).
   // CDP and loadURL work on a detached view, so a background session loads
   // invisibly and reorderViews places it correctly once the caller decides.
-  sessions.set(sessionId, { viewA, viewB: null, tabId: null, frameSessions: new Map() });
+  const sess: Session = { viewA, viewB: null, tabId: null, loaded: false, frameSessions: new Map() };
+  sessions.set(sessionId, sess);
+
+  // First-load tracking: until viewA has painted something, showSession
+  // keeps it detached (skeleton mode). The moment the first top-level load
+  // completes — or genuinely fails (Chromium's error page is honest content;
+  // ERR_ABORTED -3 is just a superseded load in a redirect chain, keep
+  // waiting) — attach it if the user is still parked on its skeleton.
+  const markLoaded = () => {
+    if (sess.loaded) return;
+    sess.loaded = true;
+    if (pendingShowSessionId === sessionId) showSession(sessionId);
+  };
+  viewA.webContents.on('did-finish-load', markLoaded);
+  viewA.webContents.on('did-fail-load', (_event, errorCode, _desc, _url, isMainFrame) => {
+    if (isMainFrame && errorCode !== -3) markLoaded();
+  });
   log.info(
     `[Panels] createSession(${sessionId.slice(0, 12)}) — created | partition=${partition} ` +
     `| total=${sessions.size} | jobs=${countJobSessions()}/${MAX_BROWSER_JOB_SESSIONS}`,
@@ -259,47 +341,59 @@ function countJobSessions(): number {
   return n;
 }
 
-export function hasSession(sessionId: string): boolean {
-  return sessions.has(sessionId);
-}
+/** What a show attempt did: the view is on top (`shown`), the view exists
+ * but its first load is still painting so the skeleton is up (`loading`),
+ * or no view exists at all (`none` — the renderer reacts by navigating the
+ * session to the job's posting URL, skeleton already up). */
+export type ShowSessionResult = 'shown' | 'loading' | 'none';
 
-export function showSession(sessionId: string): boolean {
-  if (!sessions.has(sessionId)) {
-    // No BrowserView for this session — a queued job the worker hasn't
-    // navigated yet, or a job from an earlier app run. Detach every view
-    // and report `false` so the renderer shows the SessionPlaceholder card.
-    log.info(`[Panels] showSession(${sessionId.slice(0, 8)}) — no view, placeholder mode`);
-    placeholderMode = true;
-    activeSessionId = null;
-    reorderViews();
-    return false;
-  }
-  const prev = activeSessionId;
-  placeholderMode = false;
-  activeSessionId = sessionId;
-  reorderViews();
-  log.info(`[Panels] showSession(${sessionId.slice(0, 8)}) — prev=${prev?.slice(0, 8) ?? 'none'}`);
-
-  // Push the active-session change to the renderer so the sidebar row
-  // gets the active pill even when the worker auto-jumps (i.e. `showSession`
-  // was triggered by an incoming `navigate` WS command, not a user click).
-  // Idempotent on the renderer side — if `activeJobId` already matches the
-  // setState is a no-op.
-  //
-  // Boot-race note: the very first `showSession` (for `__webapp__`) fires
-  // synchronously from `windows.ts:createMainWindow` after `loadURL`
-  // resolves, but BEFORE App.tsx mounts and registers its listener. That
-  // first push is dropped — harmless because App.tsx initializes
-  // `activeNavId='__webapp__'` to match. Don't add an ack/replay here
-  // unless we discover a sync gap that actually affects the user.
+// Push the active-session change to the renderer so the sidebar row gets
+// the active pill even when the worker auto-jumps (i.e. `showSession` was
+// triggered by an incoming `navigate` WS command, not a user click), and
+// so the loading skeleton tracks main's truth about whether the tab on
+// top has painted content. Idempotent on the renderer side.
+//
+// Boot-race note: the very first `showSession` (for `__webapp__`) fires
+// synchronously from `windows.ts:createMainWindow` after `loadURL`
+// resolves, but BEFORE App.tsx mounts and registers its listener. That
+// first push is dropped — harmless because App.tsx initializes
+// `activeNavId='__webapp__'` to match. Don't add an ack/replay here
+// unless we discover a sync gap that actually affects the user.
+function pushActiveChanged(sessionId: string, loading: boolean): void {
   if (parentWindow && !parentWindow.isDestroyed() && !parentWindow.webContents.isDestroyed()) {
     try {
-      parentWindow.webContents.send(IpcChannel.SESSION_ACTIVE_CHANGED, { sessionId });
+      parentWindow.webContents.send(IpcChannel.SESSION_ACTIVE_CHANGED, { sessionId, loading });
     } catch (e) {
       log.warn(`[Panels] session:active-changed send failed: ${(e as Error).message}`);
     }
   }
-  return true;
+}
+
+export function showSession(sessionId: string): ShowSessionResult {
+  const sess = sessions.get(sessionId);
+  if (!sess || !sess.loaded) {
+    // The wanted tab can't paint yet — either no BrowserView (a job from an
+    // earlier app run, or a queued job the worker hasn't navigated; the
+    // renderer reacts to `none` by navigating it to the posting URL) or a
+    // view whose first load is in flight. Detach every view so the
+    // renderer's loading skeleton shows through; markLoaded (createSession)
+    // attaches the view the moment it has real content.
+    log.info(`[Panels] showSession(${sessionId.slice(0, 8)}) — ${sess ? 'first load in flight' : 'no view'}, skeleton mode`);
+    pendingShowSessionId = sessionId;
+    skeletonMode = true;
+    activeSessionId = null;
+    reorderViews();
+    pushActiveChanged(sessionId, true);
+    return sess ? 'loading' : 'none';
+  }
+  const prev = activeSessionId;
+  pendingShowSessionId = null;
+  skeletonMode = false;
+  activeSessionId = sessionId;
+  reorderViews();
+  log.info(`[Panels] showSession(${sessionId.slice(0, 8)}) — prev=${prev?.slice(0, 8) ?? 'none'}`);
+  pushActiveChanged(sessionId, false);
+  return 'shown';
 }
 
 /**
@@ -377,14 +471,32 @@ export async function navigateSession(
       ),
     ]);
   } catch (err) {
-    log.error(`[Panels] navigateSession(${sessionId.slice(0, 8)}) — loadURL failed: ${(err as Error).message}`);
-    throw err;
+    const msg = (err as Error).message || '';
+    // ERR_ABORTED (-3) means THIS loadURL was superseded — a client redirect
+    // chain (Gmail's cold load; ATS landing redirects do it too - the
+    // tolerance is global, not inbox-specific) or a rapid follow-up
+    // navigation. The view is alive and loading the superseding URL, so
+    // failing the whole navigate here failed callers over a benign race
+    // (the EmailAgent's inbox-open on run 46c73106). Continue: tabId is the
+    // webContents id (constant for the view regardless of load state), and
+    // downstream perception has its own DOM-settle. Timeouts and real load
+    // errors still throw.
+    if (msg.includes('ERR_ABORTED')) {
+      log.warn(`[Panels] navigateSession(${sessionId.slice(0, 8)}) — loadURL superseded (ERR_ABORTED), continuing`);
+    } else {
+      log.error(`[Panels] navigateSession(${sessionId.slice(0, 8)}) — loadURL failed: ${msg}`);
+      throw err;
+    }
   }
 
   session.tabId = session.viewA.webContents.id;
   log.info(`[Panels] navigateSession(${sessionId.slice(0, 8)}) — loaded, tabId=${session.tabId}`);
 
-  if (autoShow) {
+  // Honour autoShow only while this session is still the one the user wants
+  // (or nothing is claimed yet — the boot __webapp__ load). A slow load must
+  // not steal focus from a tab the user switched to in the meantime.
+  const wanted = pendingShowSessionId ?? activeSessionId;
+  if (autoShow && (wanted === null || wanted === sessionId)) {
     showSession(sessionId);
   } else {
     // Background load: attach the newly-created view in correct z-order (behind
@@ -418,37 +530,54 @@ export async function showOrNavigateSession(sessionId: string, url: string): Pro
 }
 
 /**
- * Inbox-specific "show or navigate". A missing url means "normal sidebar
- * row click": show an existing inbox tab without reload, or create it at
- * Gmail root if it does not exist yet. An explicit url means "pre-search
- * affordance": force-load the Gmail search URL even when the session already
- * exists. See workstreams/browser/inbox-access.md "Pre-search affordance".
+ * Inbox-specific "show or navigate": show an existing inbox tab without
+ * reload, or create it + load the Gmail root if it does not exist yet.
+ * The sidebar InboxRow click routes through here.
  */
-export async function showOrNavigateInbox(sessionId: string, url?: string): Promise<void> {
+export async function showOrNavigateInbox(sessionId: string): Promise<void> {
   if (!isInboxSessionId(sessionId)) {
     log.warn(`[Panels] showOrNavigateInbox(${sessionId.slice(0, 12)}) — non-inbox session id rejected`);
     return;
   }
   const existing = sessions.get(sessionId);
   if (existing && existing.tabId !== null) {
-    if (!url) {
-      log.info(`[Panels] showOrNavigateInbox(${sessionId.slice(0, 12)}) — existing tab, z-order switch`);
-      showSession(sessionId);
-      return;
-    }
-    log.info(`[Panels] showOrNavigateInbox(${sessionId.slice(0, 12)}) — existing tab, force-loadURL`);
-    try {
-      await existing.viewA.webContents.loadURL(url);
-    } catch (err) {
-      log.error(`[Panels] showOrNavigateInbox loadURL failed: ${(err as Error).message}`);
-    }
+    log.info(`[Panels] showOrNavigateInbox(${sessionId.slice(0, 12)}) — existing tab, z-order switch`);
     showSession(sessionId);
     return;
   }
-  // No view yet - createSession picks up the per-inbox partition from
-  // the session id and navigateSession brings the new view to the front
-  // (default autoShow:true).
-  await navigateSession(sessionId, url || 'https://mail.google.com/mail/u/0/');
+  // No view yet (preload hasn't landed or failed). Create it and select it
+  // immediately - never hold the user on the previous tab until the load
+  // completes (the observed stale-screen jank on cold Gmail loads). The
+  // unloaded view can't paint, so showSession puts the loading skeleton up
+  // and markLoaded swaps the real view in on first-load completion.
+  // createSession picks up the per-inbox partition from the session id;
+  // navigateSession keeps autoShow:false because markLoaded owns the swap.
+  if (!createSession(sessionId)) return;
+  showSession(sessionId);
+  await navigateSession(sessionId, GMAIL_ROOT_URL, { autoShow: false });
+}
+
+/**
+ * Background-preload an inbox view at Gmail root. The renderer fires this
+ * for every row the moment its inbox list lands, so a sidebar click or an
+ * OTP retrieval finds Gmail already painted instead of paying the cold
+ * redirect-chain load at the moment of need (workstreams/browser/specs.md
+ * "eager preload"). Never changes z-order. Best-effort: a failure just
+ * degrades to the on-click / on-OTP load path.
+ */
+export async function preloadInbox(sessionId: string): Promise<void> {
+  if (!isInboxSessionId(sessionId)) {
+    log.warn(`[Panels] preloadInbox(${sessionId.slice(0, 12)}) — non-inbox session id rejected`);
+    return;
+  }
+  const existing = sessions.get(sessionId);
+  if (existing && existing.tabId !== null) return; // already warm
+  try {
+    await navigateSession(sessionId, GMAIL_ROOT_URL, { autoShow: false });
+    log.info(`[Panels] preloadInbox(${sessionId.slice(0, 12)}) — warm`);
+  } catch (err) {
+    log.warn(`[Panels] preloadInbox(${sessionId.slice(0, 12)}) — failed, lazy path remains: ${(err as Error).message}`);
+  }
 }
 
 export function showTailorView(sessionId: string, url: string): boolean {
@@ -532,6 +661,9 @@ export function destroySession(sessionId: string): void {
 
   if (activeSessionId === sessionId) {
     activeSessionId = null;
+  }
+  if (pendingShowSessionId === sessionId) {
+    pendingShowSessionId = null;
   }
 
   log.info(`[Panels] destroySession(${sessionId.slice(0, 8)}) — done, remaining=${sessions.size}`);

@@ -4,7 +4,7 @@
 // every CDP cookie against this list before writing it into our partition.
 //
 // Mirrors the server-side ATS sender allowlist
-// (web-api/finbroapi/src/finbroagents/browseragent/inbox_sender_allowlist.py)
+// (web-api/finbroapi/src/finbroagents/browseragent/inbox/sender_allowlist.py)
 // plus the identity providers a portal sign-in / OTP flow leans on. Widen here
 // as the test surface grows; this is the single source of truth on the desktop
 // side. New domains are a code change, never user/LLM-authored.

@@ -46,7 +46,7 @@
   --sidebar-zone-width:    calc(var(--sidebar-card-width) + var(--sidebar-gutter-l) + var(--sidebar-gutter-r));
   --sidebar-radius:        14px;
 
-  --bar-height:            96px;
+  --bar-height:            84px; /* JorbHeader row; +28px nav strip on agent sessions (ActionBar.tsx) */
   --header-height:         48px;
 
   /* Shadows — calibrated for white-on-white separation */
@@ -237,7 +237,10 @@ button {
 }
 
 .sidebar__nav-item:hover {
-  background: var(--gray-50);
+  /* web-app's row hover (line-strong/10 = gray-300 @ 10%): a slight glass
+     grey that keeps the frosted card visible underneath, vs the old solid
+     gray-50 which opaqued the row. */
+  background: rgba(209, 213, 219, 0.10);
   color: var(--gray-900);
 }
 
@@ -367,7 +370,8 @@ button {
 }
 
 .session-row:hover {
-  background: var(--gray-50);
+  /* Same glass-grey hover as .sidebar__nav-item (web-app's line-strong/10). */
+  background: rgba(209, 213, 219, 0.10);
   color: var(--gray-900);
 }
 
@@ -454,16 +458,22 @@ button {
 /* Overflow tooltip — rendered to body via portal, position: fixed, so it
    escapes the sidebar's overflow:hidden + .sidebar__sections overflow:auto
    without its own clipping issues. Anchored to the row's bottom-left and
-   capped in width so it never leaks into the BrowserView area. */
+   capped in width so it never leaks into the BrowserView area.
+   Frosted-glass chip in the sidebar card's own language (same fill + blur),
+   NOT a flat white web-app-style tooltip card — it floats inside the
+   sidebar zone and must read as a piece of the shell. */
 .session-row__tooltip {
   position: fixed;
   z-index: 100;
   pointer-events: none;
-  padding: 6px 10px;
-  background: var(--white);
-  border: 1px solid var(--gray-200);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
+  padding: 7px 11px;
+  background: rgba(255, 255, 255, 0.72);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  border-radius: 10px;
+  box-shadow: 0 12px 28px rgba(17, 24, 39, 0.16),
+              inset 0 1px 0 rgba(255, 255, 255, 0.85);
   font-size: 12px;
   line-height: 1.4;
   color: var(--gray-900);
@@ -481,20 +491,96 @@ button {
    ACTION BAR — adaptive, hidden on idle / system tab
    ══════════════════════════════════════════════════════════════════════ */
 
+/* Two stacked rows: the JorbHeader row (--bar-height: 84) + the browser-
+   chrome nav strip (28) on agent sessions. Inbox tabs render the header
+   row only. Total heights must mirror ActionBar.tsx's BAR_HEADER_HEIGHT /
+   NAV_STRIP_HEIGHT constants - main re-flows BrowserView bounds from the
+   renderer's setBarHeight push. */
 .action-bar {
-  height: var(--bar-height);
   display: flex;
-  align-items: center;
+  flex-direction: column;
   background: var(--white);
   border-bottom: 1px solid var(--gray-200);
   overflow: hidden;
   flex-shrink: 0;
 }
 
+.action-bar__main {
+  height: var(--bar-height);
+  display: flex;
+  align-items: center;
+}
+
+/* ── Browser-chrome nav strip — frosted band under the JorbHeader ────
+   Real back/forward + a read-only URL pill, in the shell's glass language
+   (translucent fill + top hairline + inner highlight; there is nothing to
+   blur behind solid bar chrome, so the glass is mimed, not backdropped). */
+.action-bar__nav {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 14px;
+  background: linear-gradient(rgba(255, 255, 255, 0.66), rgba(249, 250, 251, 0.58));
+  border-top: 1px solid rgba(229, 231, 235, 0.7);
+  border-bottom: 1px solid rgba(229, 231, 235, 0.45);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9),
+              0 1px 6px rgba(17, 24, 39, 0.04);
+}
+
+/* Arrows are wayfinding, not a call to action - they sit quiet until hover. */
+.action-bar__nav-btn {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--gray-500);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out);
+}
+
+.action-bar__nav-btn:hover:not(:disabled) {
+  background: rgba(209, 213, 219, 0.22);
+  color: var(--gray-800);
+}
+
+.action-bar__nav-btn:disabled {
+  color: var(--gray-300);
+  cursor: default;
+}
+
+.action-bar__nav-url {
+  flex: 1;
+  min-width: 0;
+  margin-left: 8px;
+  height: 22px;
+  line-height: 20px;
+  padding: 0 12px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.55);
+  -webkit-backdrop-filter: blur(8px) saturate(140%);
+  backdrop-filter: blur(8px) saturate(140%);
+  border: 1px solid rgba(229, 231, 235, 0.75);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  font-size: 11.5px;
+  color: var(--gray-500);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: none;
+  cursor: default;
+}
+
 /* Stop is the one "halt everything, give me the screen back" control, so it
    reads as urgent: a glassy red pill (danger-tinted fill + backdrop blur + a
-   soft red glow), distinct from the filled-purple Continue beside it - red
-   glass vs solid purple keeps the two unmistakable and prevents a fat-finger
+   soft red glow), distinct from the gleaming-green Continue beside it - red
+   glass vs gleaming green keeps the two unmistakable and prevents a fat-finger
    swap. Prominence over the old neutral/outlined treatment was a deliberate ask. */
 .action-bar__stop {
   display: inline-flex;
@@ -547,29 +633,45 @@ button {
   to { transform: rotate(360deg); }
 }
 
-/* Continue button - inbox-access only, paused_for_user state.
-   Filled primary purple, white text. Rendered to the RIGHT of Stop with
-   a ~16px gap (NOT a button group), so the muscle-memory fat-finger
-   swap between Stop and Continue can't happen. The color asymmetry
-   maps the visual hierarchy to the semantic one: Continue is the
-   preferred next action; Stop is the escape hatch. */
+/* Continue button - paused_for_user only (OTP or password handover).
+   Bright green with a visible gleam sweep, rendered to the LEFT of Stop
+   with a ~16px gap (NOT a button group) - the user must SEE this button
+   the moment the agent needs them, so it carries the same "alive" gleam
+   language as a running session row, in green. The green-solid vs
+   red-glass asymmetry still prevents the muscle-memory fat-finger swap:
+   green = proceed, red = halt. */
 .action-bar__continue {
   height: 30px;
   padding: 0 16px;
   border-radius: var(--radius-md);
-  border: 1px solid var(--primary);
-  background: var(--primary);
+  border: 1px solid #15803d;
+  /* The gleam IS the background: a lighter band swept across the green
+     fill on a 200% track (same gleam-sweep keyframes as session rows),
+     so the text stays naturally above it. */
+  background: linear-gradient(
+    90deg,
+    #16a34a 0%,
+    #22c55e 42%,
+    #4ade80 50%,
+    #22c55e 58%,
+    #16a34a 100%
+  );
+  background-size: 200% 100%;
+  animation: gleam-sweep 2.4s var(--ease-in-out) infinite;
   color: var(--white);
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.005em;
-  margin-left: 16px;
-  transition: background var(--dur-fast) var(--ease-out),
+  /* trailing container already adds gap: 8px - 8 + 8 = the spec'd 16px */
+  margin-right: 8px;
+  box-shadow: 0 1px 10px rgba(34, 197, 94, 0.45);
+  transition: box-shadow var(--dur-fast) var(--ease-out),
               filter var(--dur-fast) var(--ease-out);
 }
 
 .action-bar__continue:hover {
-  filter: brightness(1.1);
+  filter: brightness(1.06);
+  box-shadow: 0 2px 14px rgba(34, 197, 94, 0.60);
 }
 
 .action-bar--inbox-tab {
@@ -597,6 +699,13 @@ button {
   height: 14px;
   color: var(--gray-500);
   flex-shrink: 0;
+}
+
+.inbox-row__icon img {
+  width: 13px;
+  height: 13px;
+  object-fit: contain;
+  display: block;
 }
 
 .inbox-row__label {
@@ -668,29 +777,38 @@ button {
   position: fixed;
   z-index: 200;
   padding: 8px;
-  background: var(--white);
-  border: 1px solid var(--gray-200);
+  /* Same frosted-glass family as the sidebar card + session-row tooltip:
+     floating chrome inside the sidebar zone reads as shell, not as a flat
+     white web-app card. */
+  background: rgba(255, 255, 255, 0.78);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.65);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 14px 32px rgba(17, 24, 39, 0.18),
+              inset 0 1px 0 rgba(255, 255, 255, 0.85);
   display: flex;
   flex-direction: row;
   gap: 6px;
   animation: tooltip-fade-in 120ms var(--ease-out) both;
 }
 
-/* Provider tile – brand logo only at rest; the provider name fades in
-   below the logo on hover (and keyboard focus), with the logo lifting to
-   make room. Logos live in renderer/assets/icons/{gmail,outlook}.svg
-   (vector, so crisp at any DPI). Outlook is dimmed + "soon" until it
-   ships under the same primitive; it still reveals its name on hover so
-   the user knows what it is. */
+/* Provider tile – compact 40px tile (the popover must fit INSIDE the
+   190px sidebar zone; everything past it is under the BrowserView), house
+   provider mark only at rest; the provider name fades in below the mark on
+   hover (and keyboard focus), with the mark lifting to make room. Marks
+   live in renderer/assets/icons/{gmail,outlook}.svg (vector, crisp at any
+   DPI). Outlook is dimmed + "soon" until it ships under the same
+   primitive; it still reveals its name on hover so the user knows what it
+   is. Width changes here must update POPOVER_WIDTH in
+   InboxProviderPopover.tsx (the clamp math). */
 .inbox-tile {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 72px;
-  height: 72px;
+  width: 40px;
+  height: 40px;
   border-radius: var(--radius-md);
   background: transparent;
   border: 1px solid transparent;
@@ -700,8 +818,8 @@ button {
 }
 
 .inbox-tile__logo {
-  width: 34px;
-  height: 34px;
+  width: 18px;
+  height: 18px;
   object-fit: contain;
   pointer-events: none;
   transition: transform var(--dur-base) var(--ease-out),
@@ -712,9 +830,9 @@ button {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 7px;
+  bottom: 3px;
   text-align: center;
-  font-size: 11px;
+  font-size: 8.5px;
   font-weight: 600;
   letter-spacing: 0.01em;
   color: var(--gray-600);
@@ -737,7 +855,7 @@ button {
 
 .inbox-tile:hover .inbox-tile__logo,
 .inbox-tile:focus-visible .inbox-tile__logo {
-  transform: translateY(-7px) scale(1.06);
+  transform: translateY(-5px) scale(1.05);
 }
 
 .inbox-tile:hover .inbox-tile__label,
@@ -812,9 +930,11 @@ button {
 
 .jorb-header__bubble {
   position: relative;
-  /* Hug the text and cap the width: a contained bubble, not a bar-wide strip. */
+  /* Hug the text, stretch wide: speech must sit in 1-2 lines, never more
+     (the clamp below is the hard guard). Width is the room that keeps the
+     longest variants on two lines inside the 84px row. */
   min-width: 0;
-  max-width: 460px;
+  max-width: 860px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -838,11 +958,13 @@ button {
   font-size: 13px;
   line-height: 1.4;
   color: var(--gray-700);
-  /* Wrap freely. The bubble's `max-width: 460px` caps line length;
-     longest paused_for_user variants render at ~3 lines, well within
-     the action-bar's height budget (122px in paused_for_user mode,
-     96px otherwise). */
+  /* Two lines, hard cap. The wide bubble keeps every fixed-vocabulary
+     variant at 1-2 lines; the clamp ellipsizes anything longer rather
+     than clipping mid-letter against the 84px row. */
   white-space: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
 }
 
@@ -912,91 +1034,94 @@ button {
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   SESSION PLACEHOLDER — middle-panel card for a job with no live tab
-   Shown when a sidebar session has no BrowserView (queued, or a job from
-   an earlier app run). Fills .panel-browser; all BrowserViews are
-   detached by panels.ts placeholder mode so nothing occludes it.
+   TAB LOADING SKELETON — middle-panel state while the active tab's
+   BrowserView hasn't completed its first load. Fills .panel-browser; all
+   BrowserViews are detached by panels.ts skeleton mode so nothing
+   occludes it. Generic page shape (top chrome bar + content column),
+   grey-only, breathing pulse — never brand color.
    ══════════════════════════════════════════════════════════════════════ */
 
-.placeholder {
+.skeleton {
   position: absolute;
   inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 32px;
   background: var(--white);
+  overflow: hidden;
 }
 
-.placeholder__card {
-  width: 100%;
-  max-width: 380px;
+.skeleton__bone {
+  background: var(--gray-100);
+  border-radius: var(--radius-sm);
+  animation: skeleton-pulse 1.8s var(--ease-in-out) infinite;
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+.skeleton__topbar {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  height: 52px;
+  padding: 0 28px;
+  border-bottom: 1px solid var(--gray-100);
+}
+
+.skeleton__logo {
+  width: 92px;
+  height: 18px;
+}
+
+.skeleton__nav {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex: 1;
+}
+
+.skeleton__navitem {
+  width: 56px;
+  height: 10px;
+}
+
+.skeleton__avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+}
+
+.skeleton__page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 48px 32px;
+}
+
+.skeleton__h1 {
+  width: 58%;
+  height: 22px;
+}
+
+.skeleton__meta {
+  width: 34%;
+  height: 12px;
+  margin-top: 14px;
+}
+
+.skeleton__lines {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 22px 24px;
-  background: var(--white);
-  border: 1px solid var(--gray-200);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
+  gap: 12px;
+  margin-top: 32px;
 }
 
-.placeholder__eyebrow {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.skeleton__line {
+  height: 11px;
 }
 
-.placeholder__eyebrow--queued    { color: var(--gray-500); }
-.placeholder__eyebrow--completed { color: var(--success); }
-.placeholder__eyebrow--failed    { color: var(--danger); }
-.placeholder__eyebrow--stopped   { color: var(--gray-500); }
-
-.placeholder__queued-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--gray-400);
-  animation: breathe 1.8s var(--ease-in-out) infinite;
-}
-
-.placeholder__mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 15px;
-  height: 15px;
-  font-size: 12px;
-  line-height: 1;
-}
-
-.placeholder__title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--gray-900);
-  letter-spacing: -0.01em;
-}
-
-.placeholder__meta {
-  font-size: 12.5px;
-  color: var(--gray-500);
-}
-
-.placeholder__body {
-  margin-top: 4px;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--gray-600);
-}
-
-.placeholder__hint {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--gray-100);
-  font-size: 11.5px;
-  color: var(--gray-400);
+.skeleton__block {
+  width: 100%;
+  height: 140px;
+  margin-top: 32px;
+  border-radius: var(--radius-md);
 }

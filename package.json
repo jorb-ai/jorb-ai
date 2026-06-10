@@ -7,6 +7,7 @@
   "license": "MIT",
   "scripts": {
     "build": "tsc --project tsconfig.main.json && vite build",
+    "typecheck": "tsc --project tsconfig.main.json --noEmit && tsc --project tsconfig.renderer.json --noEmit",
     "dev": "concurrently --kill-others --raw --names vite,electron --prefix-colors blue,magenta \"npm:dev:vite\" \"npm:dev:electron\"",
     "dev:browser": "concurrently --kill-others --raw --names vite,electron --prefix-colors blue,magenta \"npm:dev:vite:browser\" \"npm:dev:electron:browser\"",
     "dev:vite": "vite",

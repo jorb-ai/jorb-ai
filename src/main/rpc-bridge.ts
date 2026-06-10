@@ -20,8 +20,6 @@ import { IpcChannel } from '../types/ipc.types';
 // their own validation paths and do not come through rpc:request.
 const RENDERER_ALLOWED_MSG_TYPES: ReadonlySet<string> = new Set([
   'list_browser_jobs',
-  'watch_agent_job',
-  'unwatch_agent_job',
   // Inbox-access (workstreams/browser/contracts.md C12)
   'list_user_inboxes',
   'add_user_inbox',
@@ -37,8 +35,6 @@ const SERVER_ALLOWED_EVENT_TYPES: ReadonlySet<string> = new Set([
   'browser_jobs_list',
   'browser_job_inserted',
   'browser_job_updated',
-  'agent_job',
-  'agent_job_updated',
   'subscribed',
   'error', // rpc.ts rejects correlated promises on error responses
   // Inbox-access responses (correlated by `id`) + push (C12, C14)
