@@ -103,6 +103,21 @@ export function resolveFilePath(relativePath: string): string | null {
   }
 }
 
+/**
+ * Byte size of an absolute path (already resolved by resolveFilePath). Returns
+ * -1 if it can't be stat'd. Used by the upload path's 0-byte precheck: a
+ * truncated / still-writing download would upload a blank document, a silent
+ * failure the portal accepts.
+ */
+export function fileSizeBytes(absolutePath: string): number {
+  try {
+    return fs.statSync(absolutePath).size;
+  } catch (error) {
+    log.warn('[FileSync] Could not stat file for size:', error);
+    return -1;
+  }
+}
+
 function resolveInsideFilesDir(...segments: string[]): string | null {
   const root = path.resolve(FILES_DIR);
   const fullPath = path.resolve(root, ...segments);

@@ -390,6 +390,14 @@ async function executeFileUpload(id: string, params: any): Promise<void> {
       sendError(id, `File not found: ${relative_path}`);
       return;
     }
+    // 0-byte precheck: a truncated / still-writing download would attach a blank
+    // document, a silent failure the portal accepts. Refuse it so the agent
+    // re-syncs rather than uploading nothing.
+    if (FileSync.fileSizeBytes(absolutePath) === 0) {
+      log.warn(`[WebSocket] Refused empty upload file: ${relative_path}`);
+      sendError(id, `Upload file is empty (0 bytes): ${relative_path}`);
+      return;
+    }
 
     await executeCdpCommand(id, {
       method: cdp_method,

@@ -259,6 +259,19 @@ function wireFrameTracking(session: Session, sessionId: string): void {
       if (ti.type === 'iframe') {
         session.frameSessions.set(params.sessionId, { targetId: ti.targetId, url: ti.url || '' });
       }
+      // Re-arm flatten auto-attach on the newly attached session so a frame nested
+      // inside a cross-origin frame (an OOPIF grandchild, depth >= 2) attaches too -
+      // the single setAutoAttach on the page below never reaches it. Cascades to any
+      // depth via this same handler. Fire-and-forget; a non-attachable target no-ops.
+      dbg
+        .sendCommand(
+          'Target.setAutoAttach',
+          { autoAttach: true, flatten: true, waitForDebuggerOnStart: false },
+          params.sessionId,
+        )
+        .catch((err) =>
+          log.debug(`[Panels] re-arm setAutoAttach failed (${(params.sessionId || '').slice(0, 8)}): ${(err as Error).message}`),
+        );
     } else if (method === 'Target.detachedFromTarget') {
       session.frameSessions.delete(params.sessionId);
     }
