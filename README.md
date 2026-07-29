@@ -54,7 +54,7 @@ flowchart TB
 
 The desktop app embeds the real job application page inside its own window. The Jorb agent, your AI copilot in the cloud, reads the page, decides what to type, and ships those keystrokes back over a single WebSocket. The desktop replays them through Chrome DevTools Protocol, the same channel real browsers use to drive themselves. To the application portal, every keystroke looks like a human at the keyboard.
 
-When the agent reaches a resume or cover letter upload, it pauses, tailors the document in your voice, and waits for your explicit approval before anything gets submitted.
+When the agent reaches a resume or cover letter upload, it pauses, tailors the document in your voice, and waits for your explicit approval before anything gets submitted. The form's own open-ended questions ("Why do you want to work here?") pause the same way: it drafts your answers, you review and approve the set, then it types them in.
 
 <br/>
 
