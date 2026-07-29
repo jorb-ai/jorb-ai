@@ -28,7 +28,10 @@ export interface BrowserEvent {
   tool?: string;
   message?: string;
   ts?: string;
-  doc_type?: 'resume' | 'cover_letter';
+  // C20: `short_answer` rides the SAME paused_for_tailor / tailor_ready pair as
+  // the two documents - no new event type - so only the noun in the action-bar
+  // speech differs.
+  doc_type?: 'resume' | 'cover_letter' | 'short_answer';
   agent_job_id?: string;
   file_path?: string;
   // C13: `paused_for_user` carries a reason code (+ optional inbox_id for

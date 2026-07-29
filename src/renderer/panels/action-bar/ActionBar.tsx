@@ -118,7 +118,7 @@ function stripTrailingDots(s: string): string {
 }
 
 /** Doc type of the current tailor cycle, newest cycle wins. */
-function currentDocType(events: BrowserEvent[]): 'resume' | 'cover_letter' | null {
+function currentDocType(events: BrowserEvent[]): 'resume' | 'cover_letter' | 'short_answer' | null {
   for (let i = events.length - 1; i >= 0; i--) {
     const e = events[i];
     if (e.type === 'tailor_approved' || e.type === 'resumed') break;
@@ -136,6 +136,9 @@ function deriveJobSpeech(mode: Mode, job: BrowserJobRow): string {
       return "You're in the queue. I'll start as soon as a worker is free.";
     case 'needs_review': {
       const t = currentDocType(events);
+      if (t === 'short_answer') {
+        return 'Your answers are ready. Review them and approve below to continue.';
+      }
       const doc = t === 'resume' ? 'resume' : t === 'cover_letter' ? 'cover letter' : 'document';
       return `Your ${doc} is ready. Review it and approve below to continue.`;
     }
