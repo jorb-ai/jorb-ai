@@ -7,12 +7,8 @@ Orientation for agents and humans working in this repository. Public-facing pitc
 - **Identity:** Electron desktop app that automates job applications via Chrome DevTools Protocol. A dumb terminal: zero business logic, zero direct Supabase, zero Realtime.
 - **Stack:** Electron + TypeScript + React (Vite HMR). One BrowserWindow with a floating sidebar plus an adaptive action bar above a flush-white middle panel.
 - **Role:** Layer 1 shell. All intelligence lives in `web-api/` (the Python brain). The embedded `web-app` renders inside a BrowserView as Layer 2 (peer app). Communication is a SINGLE WebSocket. CDP, navigate, file sync, panel switch, and pubsub data all ride it.
-- **Critical contract:** `MAX_BROWSER_JOB_SESSIONS` here MUST equal `MAX_CONCURRENT_BROWSER_JOBS` in `web-api/finbroapi/src/browser_worker/main.py` (see `workstreams/browser/contracts.md` C9).
+- **Critical contract:** the C9 session-cap equality with web-api - Rule 6 below binds it.
 - **Next read:** `workstreams/browser/` (workstream.md, architecture.md, contracts.md) in the HQ monorepo for system-wide architecture. This file is the visual-language plus source-structure reference.
-
-## Branch Policy
-
-Work on `main` only. No feature branches. Commits land directly on `main` with clear per-change messages and are pushed immediately. See the org-wide rule in HQ's `CLAUDE.md`.
 
 ## What This Is
 
@@ -95,8 +91,8 @@ The shell is a browser at heart, with tabs, switching, loading, closing. For any
 - Switching tabs is a z-order change, instant, never a reload. The tab keeps its scroll, sign-in, and form state (`showOrNavigateSession`).
 - A tab loads once on first open. After that, it persists.
 - Closing a tab is immediate and irreversible, and the close affordance is always reachable, every tab, every state.
-- A tab that is loading says so: the grey page skeleton (`TabLoadingSkeleton`) holds the middle panel until the tab's first load completes (`panels.ts` skeleton mode — all views detached, attach on first `did-finish-load`). Never a blank view, never a held stale page.
-- A session-less job row (after an app restart, or queued pre-navigate) reopens onto its posting page on click — a sidebar row is a door back to the portal, never a status tombstone.
+- A tab that is loading says so: the grey page skeleton (`TabLoadingSkeleton`) holds the middle panel until the tab's first load completes (`panels.ts` skeleton mode – all views detached, attach on first `did-finish-load`). Never a blank view, never a held stale page.
+- A session-less job row (after an app restart, or queued pre-navigate) reopens onto its posting page on click – a sidebar row is a door back to the portal, never a status tombstone.
 
 Becoming a general-purpose browser is not a goal (no address bar, no bookmarks). It's a constraint. For the browser-like things the shell does do, do them the browser way.
 
