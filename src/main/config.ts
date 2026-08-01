@@ -58,20 +58,6 @@ export function getConfigValue<K extends keyof AppConfig>(key: K): AppConfig[K] 
   return getConfig()[key];
 }
 
-/**
- * Set a specific config value
- * @param key - Configuration key
- * @param value - Value to set
- */
-export function setConfigValue<K extends keyof AppConfig>(
-  key: K,
-  value: AppConfig[K]
-): void {
-  store.set(key, value);
-  
-  log.debug(`[Config] Set ${String(key)}:`, value);
-}
-
 export function getConfigPath(): string {
   return store.path;
 }

@@ -145,4 +145,3 @@ const finbroApi = {
 // Main renderer API
 contextBridge.exposeInMainWorld('Finbro', finbroApi);
 
-export type FinbroApi = typeof finbroApi;

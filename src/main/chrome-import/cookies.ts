@@ -81,23 +81,6 @@ export function chromeBinaryCandidates(opts: ChromeBinaryOptions = {}): string[]
   return chromiumBrowserExecutableCandidates(opts);
 }
 
-export function findChromeBinary(opts: ChromeBinaryOptions = {}): string {
-  const platform = opts.platform ?? process.platform;
-  const env = opts.env ?? process.env;
-  const browser = findDefaultChromiumBrowser(opts);
-  if (browser) return browser.path;
-  for (const p of chromeBinaryCandidates(opts)) {
-    if (fs.existsSync(p)) return p;
-  }
-  const onPath = findOnPath(
-    ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser', ...executableNames('chrome', platform)],
-    env,
-    platform,
-  );
-  if (onPath) return onPath;
-  throw new Error('Compatible Chromium browser not found. Install a supported browser to import cookies.');
-}
-
 async function getFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const srv = net.createServer();
@@ -648,30 +631,3 @@ export async function importChromeProfileCookies(
   return result;
 }
 
-export interface SessionCookie {
-  name: string;
-  domain: string;
-  path: string;
-  secure: boolean;
-  httpOnly: boolean;
-  /** Unix seconds, or null for session cookies */
-  expires: number | null;
-  sameSite: string;
-}
-
-/** List every cookie in the app's default Electron session jar. Used by the
- *  Settings + Onboarding cookie viewer so the user can see (and search) what
- *  was actually imported. Read-only — values are not returned. */
-export async function listSessionCookies(): Promise<SessionCookie[]> {
-  const electronSession = session.defaultSession;
-  const all = await electronSession.cookies.get({});
-  return all.map((c) => ({
-    name: c.name,
-    domain: c.domain ?? '',
-    path: c.path ?? '/',
-    secure: !!c.secure,
-    httpOnly: !!c.httpOnly,
-    expires: typeof c.expirationDate === 'number' ? c.expirationDate : null,
-    sameSite: c.sameSite ?? 'unspecified',
-  }));
-}

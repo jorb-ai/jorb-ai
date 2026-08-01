@@ -367,10 +367,6 @@ function browserDefinitions(): BrowserDefinition[] {
   ];
 }
 
-export function supportedChromiumBrowserKeys(): string[] {
-  return browserDefinitions().map((definition) => definition.key);
-}
-
 function extraBrowserDefinition(key: string, name: string): BrowserDefinition {
   return {
     key,

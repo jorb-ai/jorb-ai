@@ -194,7 +194,8 @@ src/
 │   └── styles.css               Full design system in CSS variables
 │
 └── types/                       Shared types (main plus preload)
-    ├── config.types.ts          AppConfig: { debugMode, automationServerUrl }
+    ├── config.types.ts          AppConfig: { debugMode, automationServerUrl,
+    │                            webAppUrl } + DEV/PROD default configs
     └── ipc.types.ts             IpcChannel enum (PANEL_SET_BAR_HEIGHT,
                                  SESSION_ACTIVE_CHANGED)
 ```

@@ -84,16 +84,3 @@ export enum IpcChannel {
   RENDERER_LOG = 'renderer:log',
 }
 
-// Configuration
-export interface ConfigGetResponse {
-  config: AppConfig;
-}
-
-export interface ConfigSetRequest {
-  config: Partial<AppConfig>;
-}
-
-// Authentication
-export interface AuthSendTokenRequest {
-  token: string | null;
-}
