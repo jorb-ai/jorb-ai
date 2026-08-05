@@ -267,50 +267,6 @@ button {
   line-height: 1.5;
 }
 
-/* Dev-only cookie-import affordance — pinned below the scroll region, inside
-   the sidebar card. Dashed/quiet so it never reads as a product feature.
-   Makeshift: removed when the production onboarding flow ships. */
-.sidebar__dev {
-  flex-shrink: 0;
-  padding: 8px 10px 4px;
-  border-top: 1px solid rgba(229, 231, 235, 0.6);
-}
-
-.sidebar__dev-btn {
-  width: 100%;
-  height: 28px;
-  border: 1px dashed var(--gray-300);
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--gray-600);
-  font-family: var(--font-sans);
-  font-size: 12px;
-  cursor: pointer;
-  transition: background var(--dur-fast) var(--ease-out),
-              color var(--dur-fast) var(--ease-out),
-              border-color var(--dur-fast) var(--ease-out);
-}
-
-.sidebar__dev-btn:hover:not(:disabled) {
-  background: var(--primary-soft);
-  border-color: var(--primary);
-  color: var(--primary);
-}
-
-.sidebar__dev-btn:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
-.sidebar__dev-msg {
-  margin-top: 5px;
-  padding: 0 2px;
-  font-size: 10.5px;
-  line-height: 1.4;
-  color: var(--gray-500);
-  word-break: break-word;
-}
-
 /* ── Session row — same chrome as nav-item ─────────────────────────── */
 
 .session-row {
